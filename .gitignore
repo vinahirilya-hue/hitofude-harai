@@ -1,0 +1,25 @@
+# Promotional videos and generated publishing media
+/promo/
+
+# Trailer capture scripts, raw captures, browser profiles, and QA artifacts
+/tools/
+
+# Packaged builds and publishing bundles
+/release/
+
+# Local operating-system files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Large generated media
+*.mp4
+*.mkv
+*.webm
+*.mjpg
+*.zip
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp

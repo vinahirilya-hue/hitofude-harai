@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>一筆祓除</title>
+<link rel="icon" type="image/png" href="assets/circle.png">
+<style>
+:root{
+  --gold:#e6c37a; --gold-dim:#9a7f49; --vermil:#e05a4e;
+  --paper:#f2e8d5; --dim:#8a86a0;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-user-select:none;user-select:none}
+html,body{height:100%;overflow:hidden;background:#04050d}
+body{font-family:"Noto Serif SC","Source Han Serif SC","STKaiti","KaiTi","Yu Mincho","Microsoft YaHei",serif;color:var(--paper)}
+#wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(130% 130% at 50% 25%, #0b0e22 0%, #04050d 75%)}
+#stage{position:relative;box-shadow:0 0 90px rgba(90,70,180,.22), 0 0 24px rgba(0,0,0,.8)}
+canvas{display:block;background:#0a0d1f;cursor:crosshair}
+.hidden{display:none!important}
+.ovl{position:absolute;inset:0;pointer-events:none}
+
+/* ============ HUD ============ */
+#hud{z-index:10}
+#hudTL{position:absolute;top:18px;left:22px;width:300px}
+.bar{position:relative;height:16px;border:1px solid rgba(230,195,122,.55);background:rgba(5,6,16,.72);
+  border-radius:2px;overflow:hidden;margin-bottom:7px;box-shadow:0 0 10px rgba(0,0,0,.6) inset}
+.bar>div{position:absolute;inset:1px auto 1px 1px;border-radius:1px;transition:width .12s ease-out}
+#hpFill{background:linear-gradient(180deg,#ff8a7a,#d43a30);box-shadow:0 0 8px rgba(255,90,80,.7)}
+#manaFill{background:linear-gradient(180deg,#ffe9a8,#e0a83e);box-shadow:0 0 8px rgba(255,210,110,.65)}
+#manaPreview{background:rgba(120,60,60,.75);border-right:1px solid rgba(255,120,110,.9);transition:none}
+.bar span{position:absolute;right:6px;top:0;font-size:10px;line-height:16px;color:rgba(255,255,255,.85);
+  text-shadow:0 1px 2px #000;letter-spacing:1px}
+#lvlRow{display:flex;align-items:center;gap:8px}
+#skillWrap{margin-top:2px;display:flex;flex-wrap:wrap;gap:4px 6px;min-height:20px;width:330px}
+.skillCapacity{border:1px solid rgba(159,180,216,.36);color:#aeb8ce;font-size:10px;padding:2px 6px;
+  letter-spacing:1px;background:rgba(8,10,24,.72)}
+.skBadge{border:1px solid rgba(199,125,255,.65);color:#c99aff;font-size:11px;padding:2px 6px;letter-spacing:1px;
+  background:rgba(22,10,36,.72);border-radius:2px;text-shadow:0 0 8px rgba(199,125,255,.7)}
+.skBadge.ascended{border-color:rgba(255,220,135,.9);color:#fff0b8;
+  background:linear-gradient(135deg,rgba(54,24,72,.9),rgba(68,48,16,.88));
+  box-shadow:0 0 10px rgba(255,205,105,.24),inset 0 0 8px rgba(199,125,255,.18);
+  text-shadow:0 0 8px rgba(255,220,140,.85)}
+.skBadge.shield{border-color:rgba(230,195,122,.7);color:#ffe2a0;background:rgba(40,30,12,.72);
+  text-shadow:0 0 8px rgba(230,195,122,.65)}
+.skBadge.shield.renewal{border-color:rgba(138,255,216,.78);color:#b8ffd6;background:rgba(12,45,36,.78);
+  text-shadow:0 0 8px rgba(138,255,216,.7)}
+.skBadge.cooling{opacity:.62;filter:saturate(.58);border-style:dashed}
+#fateHud{--fate:#ffe0a0;display:flex;align-items:center;width:286px;height:33px;margin-top:4px;padding:3px 7px;
+  border-left:2px solid var(--fate);background:linear-gradient(90deg,color-mix(in srgb,var(--fate) 11%,rgba(6,8,20,.86)),rgba(6,8,20,.7))}
+#fateHud>b{flex:0 0 27px;color:var(--fate);font-size:20px;font-weight:normal;text-align:center;
+  text-shadow:0 0 9px var(--fate)}
+#fateHud span{display:flex;flex-direction:column;margin-left:7px;min-width:0}
+#fateHud strong{font-size:10px;font-weight:normal;letter-spacing:2px;color:#eee9e0}
+#fateHud i{margin-top:1px;font-size:8px;font-style:normal;letter-spacing:1px;color:color-mix(in srgb,var(--fate) 72%,#777)}
+#buildHud{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;width:330px;min-height:17px}
+.buildBadge{--build:#9fb4d8;display:flex;align-items:center;gap:5px;padding:2px 6px;border-left:2px solid var(--build);
+  background:rgba(6,8,20,.72);color:rgba(218,220,232,.72);font-size:9px;letter-spacing:1px}
+.buildBadge b{font-weight:normal;color:var(--build);text-shadow:0 0 7px var(--build)}
+.buildBadge i{font-style:normal;color:#77758a;letter-spacing:0}
+.buildBadge.t1{border:1px solid color-mix(in srgb,var(--build) 58%,transparent);color:#eeeaf2}
+.buildBadge.t1 i{color:var(--build)}.buildBadge.t2{border:1px solid var(--build);color:#fff;
+  box-shadow:0 0 11px color-mix(in srgb,var(--build) 27%,transparent),inset 0 0 9px color-mix(in srgb,var(--build) 10%,transparent)}
+.buildBadge.t2 i{color:#fff0bd}
+.buildEmpty{font-size:9px;letter-spacing:2px;color:rgba(140,136,160,.62)}
+#lvlBadge{font-size:13px;color:var(--gold);border:1px solid rgba(230,195,122,.5);padding:2px 8px;
+  background:rgba(5,6,16,.7);border-radius:2px;letter-spacing:1px;white-space:nowrap}
+.bar.xp{flex:1;height:6px;margin:0}
+#xpFill{background:linear-gradient(90deg,#7fd8c8,#b8f0e0);box-shadow:0 0 6px rgba(120,230,200,.8)}
+#weaponWrap{display:flex;gap:6px;margin-top:5px;width:330px;pointer-events:auto}
+.weaponHudSlot{min-width:124px;padding:3px 8px;border:1px solid rgba(159,180,216,.45);background:rgba(8,9,22,.76);
+  color:rgba(220,216,230,.72);font-size:10px;letter-spacing:1px;cursor:pointer;text-align:left}
+.weaponHudSlot b{color:#d8dfea;font-weight:normal;margin-right:6px}
+.weaponHudSlot.active{border-color:var(--gold);color:#fff0c2;box-shadow:0 0 12px rgba(230,195,122,.2)}
+.weaponHudSlot.active b{color:var(--gold)}
+#activeHud{position:relative;display:grid;grid-template-columns:30px 1fr 36px;align-items:center;width:286px;height:35px;
+  margin-top:6px;overflow:hidden;border:1px solid rgba(138,255,216,.52);
+  background:linear-gradient(90deg,rgba(8,27,30,.9),rgba(11,12,28,.86));
+  box-shadow:inset 0 0 16px rgba(85,220,205,.06),0 0 10px rgba(85,220,205,.08)}
+#activeHud.cooling{border-color:rgba(159,180,216,.32);filter:saturate(.65)}
+#activeHud.empowered{border-color:#e3a4ff;box-shadow:0 0 14px rgba(199,125,255,.2),inset 0 0 16px rgba(199,125,255,.1)}
+#activeSeal{position:relative;z-index:2;text-align:center;font:19px KaiTi,serif;color:#baffef;text-shadow:0 0 8px rgba(138,255,216,.7)}
+#activeCopy{position:relative;z-index:2;display:flex;flex-direction:column;min-width:0}
+#activeName{font-size:11px;letter-spacing:2px;color:#e7fff6;white-space:nowrap}
+#activeStatus{font-size:8px;letter-spacing:1px;color:rgba(185,220,222,.68);white-space:nowrap}
+#activeKey{position:relative;z-index:2;text-align:center;font-size:9px;letter-spacing:1px;color:#ffe2a0;
+  border-left:1px solid rgba(230,195,122,.22)}
+#activeTrack{position:absolute;left:0;right:0;bottom:0;height:2px;background:rgba(255,255,255,.06)}
+#activeFill{display:block;height:100%;width:100%;background:linear-gradient(90deg,#6bdcca,#d8fff7);
+  box-shadow:0 0 7px rgba(115,240,220,.8);transition:width .08s linear}
+#hudTC{position:absolute;top:14px;left:50%;transform:translateX(-50%);text-align:center}
+#waveText{font-size:12px;letter-spacing:5px;color:var(--gold);margin-bottom:2px;text-shadow:0 0 10px rgba(230,195,122,.3)}
+#timeText{font-size:22px;letter-spacing:4px;color:rgba(242,232,213,.9);text-shadow:0 0 12px rgba(230,195,122,.35)}
+#threatText{margin-top:2px;font-size:9px;letter-spacing:2px;color:#9fb4d8;text-shadow:0 0 8px rgba(100,140,210,.28);
+  transition:color .25s,text-shadow .25s}
+#threatText.danger1{color:#e4c979}#threatText.danger2{color:#ff9c70;text-shadow:0 0 9px rgba(255,105,70,.35)}
+#threatText.danger3{color:#ff7187;text-shadow:0 0 11px rgba(255,55,90,.5)}
+#threatText.sealed{color:#d39aff;animation:threatPulse .55s ease-in-out infinite alternate}
+@keyframes threatPulse{to{opacity:.62;text-shadow:0 0 14px rgba(190,100,255,.75)}}
+#bossWrap{position:absolute;top:52px;left:50%;transform:translateX(-50%);width:520px;text-align:center}
+#bossName{font-size:14px;letter-spacing:6px;color:#ffb1a8;text-shadow:0 0 10px rgba(255,80,70,.6);margin-bottom:4px}
+.bar.boss{height:10px;border-color:rgba(224,90,78,.7)}
+#bossFill{background:linear-gradient(180deg,#ff9a8a,#c02820);box-shadow:0 0 10px rgba(255,80,60,.8)}
+#hudTR{position:absolute;top:18px;right:26px;text-align:right}
+#killText{font-size:13px;color:var(--dim);letter-spacing:2px}
+#jadeText{font-size:13px;color:var(--gold);letter-spacing:2px;margin-top:4px;text-shadow:0 0 9px rgba(230,195,122,.3)}
+#comboText{font-size:34px;color:var(--gold);text-shadow:0 0 16px rgba(230,195,122,.55);min-height:44px;
+  font-weight:bold;letter-spacing:2px}
+#comboText.pop{animation:comboPop .18s ease-out}
+@keyframes comboPop{0%{transform:scale(1.35)}100%{transform:scale(1)}}
+#hint{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);font-size:13px;letter-spacing:3px;
+  color:rgba(242,232,213,.55);text-shadow:0 1px 3px #000;transition:opacity 1.2s}
+#formHud{--form-color:#bdefff;position:absolute;left:50%;bottom:52px;display:flex;align-items:center;
+  width:430px;min-height:61px;padding:8px 13px;transform:translate(-50%,9px);opacity:0;
+  border:1px solid color-mix(in srgb,var(--form-color) 38%,transparent);
+  background:linear-gradient(100deg,rgba(5,7,19,.91),rgba(15,13,32,.84),rgba(5,7,19,.91));
+  box-shadow:0 8px 28px rgba(0,0,0,.38),inset 0 0 22px color-mix(in srgb,var(--form-color) 7%,transparent);
+  transition:opacity .15s,transform .15s,border-color .15s;pointer-events:none}
+#formHud.active{opacity:.88;transform:translate(-50%,0)}
+#formHud.ready{opacity:1;border-color:var(--form-color);
+  box-shadow:0 0 18px color-mix(in srgb,var(--form-color) 20%,transparent),0 8px 28px rgba(0,0,0,.42)}
+#formKanji{flex:0 0 43px;height:43px;margin-right:12px;border:1px solid var(--form-color);
+  color:var(--form-color);font-size:25px;line-height:41px;text-align:center;text-shadow:0 0 11px var(--form-color)}
+#formCopy{min-width:0;flex:1}
+#formName{display:block;color:#e8e4dd;font-size:13px;font-weight:normal;letter-spacing:4px}
+#formHud.ready #formName{color:#fff2d5}#formHud.focused #formName:after{content:" ・专精";color:var(--gold);font-size:10px}
+#formDetail{display:block;margin-top:4px;color:rgba(209,205,220,.72);font-size:9px;letter-spacing:1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#formTrack{display:block;position:relative;height:3px;margin-top:7px;background:rgba(255,255,255,.08);overflow:hidden}
+#formProgress{display:block;height:100%;width:0;background:var(--form-color);box-shadow:0 0 8px var(--form-color);
+  transition:width .08s linear}
+#itemHud{position:absolute;right:22px;bottom:54px;width:292px;pointer-events:auto;color:rgba(235,229,240,.9);
+  background:linear-gradient(145deg,rgba(12,11,28,.88),rgba(7,7,18,.82));border:1px solid rgba(230,195,122,.28);
+  box-shadow:0 7px 24px rgba(0,0,0,.34);transition:background .18s,border-color .18s}
+#itemHudHead{height:29px;display:flex;align-items:center;justify-content:space-between;padding:0 9px;cursor:pointer;
+  font-size:11px;letter-spacing:3px;color:var(--gold)}
+#itemHudHead span:last-child{font-size:9px;letter-spacing:1px;color:var(--dim)}
+#itemHudGrid{display:grid;grid-template-columns:repeat(8,30px);gap:4px;padding:0 9px 8px;max-height:30px;overflow:hidden}
+#itemHud.open{border-color:rgba(230,195,122,.58);background:linear-gradient(145deg,rgba(17,14,34,.97),rgba(7,7,18,.95))}
+#itemHud.open #itemHudGrid{max-height:142px;overflow-y:auto}
+#itemHudDetail{display:none;min-height:47px;margin:0 9px 9px;padding:7px 8px;border-top:1px solid rgba(230,195,122,.18);
+  font-size:10px;line-height:1.5;letter-spacing:.5px;color:rgba(218,212,228,.8)}
+#itemHud.open #itemHudDetail{display:block}
+#itemHudDetail b,#itemHudDetail span{display:block;font-weight:normal}
+#itemHudDetail b{color:#ffe2a0;letter-spacing:2px;margin-bottom:3px}
+.itemHudIcon,.shopBagItem{position:relative;width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+  border:1px solid #9fb4d8;background:rgba(12,12,28,.88);color:#dbe3f2;font-size:16px;cursor:help}
+.itemHudIcon.r1,.shopBagItem.r1{border-color:#e6c37a;color:#ffe2a0;box-shadow:inset 0 0 10px rgba(230,195,122,.08)}
+.itemHudIcon.r2,.shopBagItem.r2{border-color:#c77dff;color:#d9adff;box-shadow:inset 0 0 10px rgba(199,125,255,.11)}
+.itemHudIcon.cursed,.shopBagItem.cursed{border-color:#e05a4e;color:#ff9a8a;box-shadow:inset 0 0 12px rgba(224,90,78,.16)}
+.itemHudIcon b,.shopBagItem b{font-weight:normal}
+.itemHudIcon i,.shopBagItem i{position:absolute;right:-2px;bottom:-3px;min-width:14px;height:14px;padding:0 2px;
+  border-radius:7px;background:#080916;color:#fff;font:9px/14px sans-serif;text-align:center}
+
+/* ============ 全屏反馈层 ============ */
+#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:20}
+#hurtVig{position:absolute;inset:0;pointer-events:none;z-index:19;opacity:0;
+  background:radial-gradient(75% 75% at 50% 50%, transparent 55%, rgba(200,30,25,.55) 100%)}
+#planVig{position:absolute;inset:0;pointer-events:none;z-index:5;opacity:0;transition:opacity .25s;
+  background:radial-gradient(85% 85% at 50% 50%, rgba(8,8,26,.25) 40%, rgba(4,4,16,.78) 100%)}
+#rating{position:absolute;top:26%;left:50%;transform:translate(-50%,-50%);z-index:21;pointer-events:none;
+  writing-mode:vertical-rl;font-size:84px;font-weight:bold;letter-spacing:14px;opacity:0}
+#rating.show{animation:ratingPop 1.5s ease-out forwards}
+#rating small{font-size:20px;letter-spacing:6px;color:rgba(242,232,213,.85);margin-top:10px}
+@keyframes ratingPop{
+  0%{opacity:0;transform:translate(-50%,-50%) scale(2.2);filter:blur(6px)}
+  12%{opacity:1;transform:translate(-50%,-50%) scale(1);filter:blur(0)}
+  75%{opacity:1}100%{opacity:0;transform:translate(-50%,-56%) scale(.96)}}
+#banner{position:absolute;top:15%;left:0;right:0;text-align:center;z-index:21;pointer-events:none;
+  font-size:24px;letter-spacing:10px;color:#ffd9a0;text-shadow:0 0 18px rgba(255,150,80,.5);opacity:0}
+#banner.show{animation:bannerFade 3s ease-out forwards}
+@keyframes bannerFade{0%{opacity:0;transform:translateY(8px)}15%{opacity:1;transform:none}80%{opacity:1}100%{opacity:0}}
+
+/* ============ 屏幕界面 ============ */
+.screen{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:rgba(4,5,13,.55);backdrop-filter:blur(2px)}
+.screen .panel{text-align:center;animation:panelIn .5s ease-out}
+@keyframes panelIn{0%{opacity:0;transform:translateY(14px)}100%{opacity:1;transform:none}}
+h1.title{writing-mode:vertical-rl;font-size:96px;letter-spacing:22px;font-weight:bold;
+  background:linear-gradient(180deg,#fff2d8 20%,var(--gold) 60%,#b06a3c);-webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 0 22px rgba(230,195,122,.4));margin-bottom:6px}
+.subtitle{letter-spacing:8px;color:var(--dim);font-size:15px;margin:14px 0 34px}
+.btn{pointer-events:auto;cursor:pointer;display:inline-block;font-family:inherit;font-size:19px;letter-spacing:8px;
+  color:var(--paper);background:rgba(20,16,38,.75);border:1px solid rgba(230,195,122,.6);padding:13px 46px 13px 54px;
+  border-radius:2px;transition:all .18s;text-indent:0}
+.btn:hover{border-color:var(--gold);color:#fff;box-shadow:0 0 24px rgba(230,195,122,.35), inset 0 0 14px rgba(230,195,122,.12);
+  transform:translateY(-2px)}
+.btn.small{font-size:14px;padding:8px 26px 8px 32px;letter-spacing:5px}
+.stats{margin:18px 0 30px;font-size:15px;line-height:2.1;letter-spacing:3px;color:rgba(242,232,213,.85)}
+.stats b{color:var(--gold);font-size:19px;margin-left:8px}
+.deadTitle{font-size:64px;letter-spacing:18px;color:#c05548;text-shadow:0 0 26px rgba(200,60,50,.5);margin-bottom:8px}
+.winTitle{font-size:60px;letter-spacing:14px;color:#ffe2a8;text-shadow:0 0 30px rgba(255,200,100,.55);margin-bottom:8px}
+.winSub{letter-spacing:6px;color:var(--dim);margin-bottom:6px;font-size:14px}
+.howto{margin-top:26px;font-size:13px;line-height:2.2;letter-spacing:2px;color:rgba(200,195,215,.75);text-align:center}
+.howto em{color:var(--gold);font-style:normal}
+.settings{margin-top:30px;display:flex;gap:26px;align-items:center;justify-content:center;font-size:13px;
+  letter-spacing:2px;color:var(--dim);pointer-events:auto}
+.settings input[type=range]{width:110px;accent-color:var(--gold);cursor:pointer}
+.settings select{background:rgba(20,16,38,.9);color:var(--paper);border:1px solid rgba(230,195,122,.4);
+  font-family:inherit;padding:3px 8px;letter-spacing:2px;cursor:pointer}
+#bestLine{margin-top:14px;font-size:12px;letter-spacing:3px;color:rgba(138,134,160,.8)}
+.titleActions{display:flex;align-items:center;justify-content:center;gap:12px}
+.titleActions .btn.secondary{font-size:15px;letter-spacing:6px;padding:11px 27px 11px 33px;
+  color:#d7d2df;border-color:rgba(159,180,216,.42);background:rgba(12,13,29,.76)}
+
+/* ============ 开局命格 ============ */
+#fateSelect{z-index:42;padding:12px;background:radial-gradient(90% 100% at 50% 42%,rgba(27,21,45,.97),rgba(4,5,13,.99))}
+#fateSelect .panel{width:1210px;height:686px;padding:20px 24px 18px;border:1px solid rgba(230,195,122,.4);
+  background:linear-gradient(160deg,rgba(18,16,36,.98),rgba(7,8,20,.99));
+  box-shadow:0 20px 70px rgba(0,0,0,.62),inset 0 0 65px rgba(95,65,145,.08)}
+.fateHead{height:72px;display:flex;align-items:center;text-align:left;border-bottom:1px solid rgba(230,195,122,.24)}
+.fateTitle{font-size:30px;letter-spacing:12px;color:var(--gold);text-shadow:0 0 18px rgba(230,195,122,.28)}
+.fateTitle small{display:block;margin-top:7px;font-size:10px;letter-spacing:4px;color:var(--dim)}
+#btnFateBack{margin-left:auto;border:0;border-left:1px solid rgba(230,195,122,.28);background:transparent;color:#d9d2df;
+  padding:10px 4px 10px 24px;font-family:inherit;font-size:13px;letter-spacing:4px;cursor:pointer}
+#btnFateBack:hover{color:#fff0c2}
+#fateChoices{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:15px}
+.fateCard{--fate:#e6c37a;position:relative;display:flex;height:270px;padding:17px 14px;text-align:left;overflow:hidden;
+  border:1px solid color-mix(in srgb,var(--fate) 50%,#303146);background:linear-gradient(145deg,rgba(26,23,43,.96),rgba(9,10,24,.98));
+  color:#ddd8e2;font-family:inherit;cursor:pointer;transition:transform .16s,border-color .16s,box-shadow .16s}
+.fateCard:hover{transform:translateY(-5px);border-color:var(--fate);
+  box-shadow:0 10px 28px rgba(0,0,0,.52),0 0 22px color-mix(in srgb,var(--fate) 20%,transparent)}
+.fateKanji{flex:0 0 47px;height:47px;border:1px solid var(--fate);color:var(--fate);font-size:27px;line-height:45px;
+  text-align:center;text-shadow:0 0 10px var(--fate)}
+.fateCopy{display:flex;flex-direction:column;min-width:0;margin-left:13px}
+.fateCopy b{font-size:19px;font-weight:normal;letter-spacing:4px;color:#f2ecdf}
+.fateCopy i{margin-top:5px;font-size:10px;font-style:normal;letter-spacing:2px;color:var(--fate)}
+.fateCopy em{margin-top:18px;min-height:72px;font-size:12px;font-style:normal;line-height:1.9;letter-spacing:.6px;color:rgba(218,213,228,.78)}
+.fateCopy strong,.fateCopy small{display:block;padding-top:9px;border-top:1px solid rgba(230,195,122,.14);
+  font-size:10px;font-weight:normal;line-height:1.6;letter-spacing:1px}
+.fateCopy strong{color:var(--fate)}.fateCopy small{margin-top:7px;color:#d88383}
+
+/* ============ 万象图鉴 ============ */
+#encyclopedia{z-index:45;padding:12px;background:radial-gradient(90% 100% at 50% 42%,rgba(27,21,45,.97),rgba(4,5,13,.99))}
+#encyclopedia .codexPanel{width:1220px;height:690px;padding:18px 22px 20px;text-align:left;pointer-events:auto;
+  border:1px solid rgba(230,195,122,.38);background:linear-gradient(160deg,rgba(17,15,34,.98),rgba(7,8,20,.99));
+  box-shadow:0 20px 70px rgba(0,0,0,.62),inset 0 0 60px rgba(95,65,145,.08)}
+.codexHead{height:70px;display:flex;align-items:center;border-bottom:1px solid rgba(230,195,122,.25)}
+.codexTitle{font-size:29px;letter-spacing:12px;color:var(--gold);text-shadow:0 0 18px rgba(230,195,122,.3)}
+.codexTitle small{display:block;margin-top:6px;font-size:10px;letter-spacing:4px;color:var(--dim)}
+.codexSummary{margin-left:auto;margin-right:24px;font-size:11px;letter-spacing:3px;color:rgba(185,179,200,.72)}
+#btnCodexClose{margin-left:auto;border:0;border-left:1px solid rgba(230,195,122,.28);background:transparent;color:#d9d2df;
+  padding:9px 5px 9px 22px;font-family:inherit;font-size:13px;letter-spacing:4px;cursor:pointer}
+#btnCodexClose:hover{color:#fff0c2}
+#codexTabs{height:58px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(159,180,216,.16)}
+#codexTabs button{position:relative;min-width:136px;height:34px;padding:0 14px;border:1px solid rgba(159,180,216,.28);
+  background:rgba(10,11,26,.76);color:#aaa7b8;font-family:inherit;font-size:12px;letter-spacing:4px;cursor:pointer;transition:.16s}
+#codexTabs button:hover{color:#eee7dc;border-color:rgba(230,195,122,.5)}
+#codexTabs button.active{color:#fff0c2;border-color:var(--gold);box-shadow:inset 0 0 16px rgba(230,195,122,.1)}
+#codexTabs button i{position:absolute;right:7px;top:3px;font:9px/1 sans-serif;letter-spacing:0;color:#827d93}
+#codexBody{height:526px;overflow-y:auto;padding:14px 10px 34px 2px;scrollbar-width:thin;scrollbar-color:#78613c #0b0b18}
+#codexBody::-webkit-scrollbar{width:7px}#codexBody::-webkit-scrollbar-track{background:#0b0b18}
+#codexBody::-webkit-scrollbar-thumb{background:#78613c;border-radius:5px}
+.codexGroup{margin-bottom:25px}
+.codexGroupHead{display:flex;align-items:baseline;gap:15px;margin-bottom:10px;padding:0 4px 8px;
+  border-bottom:1px solid rgba(230,195,122,.18)}
+.codexGroupHead h3{font-size:17px;font-weight:normal;letter-spacing:6px;color:#f1d9a4}
+.codexGroupHead span{font-size:9px;letter-spacing:2px;color:#79758a}
+.codexGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.codexCard{position:relative;display:flex;min-height:122px;padding:13px 12px;border:1px solid rgba(159,180,216,.27);
+  background:linear-gradient(145deg,rgba(27,24,44,.88),rgba(10,10,24,.92));overflow:hidden}
+.codexCard.r1{border-color:rgba(230,195,122,.42)}.codexCard.r2{border-color:rgba(190,125,245,.5)}
+.codexCard.cursed{background:linear-gradient(145deg,rgba(48,19,28,.9),rgba(13,8,18,.95));border-color:rgba(225,82,104,.5)}
+.codexSeal{flex:0 0 43px;width:43px;height:43px;display:flex;align-items:center;justify-content:center;margin-right:11px;
+  border:1px solid rgba(159,180,216,.45);color:#c7d4e8;font-size:22px;background:rgba(7,8,20,.54)}
+.codexCard.r1 .codexSeal{border-color:rgba(230,195,122,.55);color:#f2d79c}
+.codexCard.r2 .codexSeal{border-color:rgba(190,125,245,.6);color:#d8adff}
+.codexCopy{min-width:0;flex:1}.codexName{font-size:14px;letter-spacing:2px;color:#f0e9dd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.codexTag{margin-top:4px;font-size:9px;letter-spacing:1.5px;color:#9b96ab}
+.codexTrigger{margin-top:7px;padding:5px 7px;border-left:2px solid rgba(230,195,122,.68);
+  background:rgba(230,195,122,.055);font-size:9px;line-height:1.55;letter-spacing:.55px;color:#ddd0ae}
+.codexTrigger span{margin-right:7px;color:var(--gold);letter-spacing:2px}
+.codexDesc{margin-top:9px;font-size:10px;line-height:1.65;letter-spacing:.7px;color:rgba(211,207,220,.78)}
+.codexMeta{margin-top:7px;padding-top:6px;border-top:1px solid rgba(159,180,216,.13);
+  font-size:9px;line-height:1.5;letter-spacing:1px;color:#ceb984}
+
+/* ============ 升级卡 ============ */
+#levelup .panel{width:100%}
+#lvTitle{font-size:26px;letter-spacing:12px;color:var(--gold);text-shadow:0 0 16px rgba(230,195,122,.4);margin-bottom:26px}
+#lvTitle small{display:block;font-size:12px;letter-spacing:4px;color:var(--dim);margin-top:8px}
+#cards{display:flex;gap:26px;justify-content:center;pointer-events:auto}
+.card{width:206px;height:300px;position:relative;cursor:pointer;border-radius:3px;overflow:hidden;
+  background:linear-gradient(170deg,rgba(24,20,44,.96),rgba(10,9,24,.96));
+  border:1px solid var(--rar,#9fb4d8);transition:transform .16s ease-out, box-shadow .16s;
+  animation:cardIn .4s ease-out backwards}
+.card:nth-child(2){animation-delay:.07s}.card:nth-child(3){animation-delay:.14s}
+@keyframes cardIn{0%{opacity:0;transform:translateY(26px) scale(.94)}100%{opacity:1;transform:none}}
+.card:hover{transform:translateY(-10px) scale(1.03);box-shadow:0 10px 40px rgba(0,0,0,.6), 0 0 26px var(--rarGlow,rgba(159,180,216,.3))}
+.card .kanji{position:absolute;top:8px;right:6px;font-size:104px;color:var(--rar,#9fb4d8);opacity:.16;line-height:1;pointer-events:none}
+.card .seal{position:absolute;top:14px;left:14px;width:34px;height:34px;border:1px solid var(--rar,#9fb4d8);
+  display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--rar,#9fb4d8);border-radius:2px}
+.card .name{position:absolute;top:64px;left:0;right:0;text-align:center;font-size:19px;letter-spacing:4px;color:var(--paper)}
+.card .rarLine{position:absolute;top:98px;left:50%;transform:translateX(-50%);width:52px;height:1px;
+  background:linear-gradient(90deg,transparent,var(--rar,#9fb4d8),transparent)}
+.card .desc{position:absolute;top:116px;left:18px;right:18px;text-align:center;font-size:13px;line-height:1.9;
+  letter-spacing:1px;color:rgba(220,214,230,.85)}
+.card .stack{position:absolute;bottom:12px;left:0;right:0;text-align:center;font-size:11px;letter-spacing:2px;color:var(--dim)}
+.card .rarTag{position:absolute;bottom:30px;left:0;right:0;text-align:center;font-size:10px;letter-spacing:4px;color:var(--rar,#9fb4d8)}
+
+/* ============ 关后商店 ============ */
+#shop{background:radial-gradient(90% 90% at 50% 48%,rgba(24,18,39,.88),rgba(4,5,13,.94))}
+#shop{padding:8px 12px}
+#shop .panel{width:1248px;min-height:696px;padding:8px 10px 5px}
+.shopHead{display:flex;align-items:flex-end;justify-content:space-between;margin:0 4px 10px;padding:4px 8px 11px;
+  border-bottom:1px solid rgba(230,195,122,.28)}
+.shopTitle{text-align:left;font-size:31px;letter-spacing:13px;color:var(--gold);text-shadow:0 0 18px rgba(230,195,122,.35)}
+.shopTitle small{display:inline-block;margin-left:18px;font-size:12px;letter-spacing:4px;color:var(--dim)}
+#shopJade{font-size:20px;letter-spacing:5px;color:#ffe2a0;text-shadow:0 0 12px rgba(255,205,110,.35)}
+.shopBagCompact{flex:1;min-width:0;margin:0 22px;text-align:left}
+.shopBagCompact>span{display:block;margin-bottom:5px;font-size:9px;letter-spacing:3px;color:var(--dim)}
+#shopBag{display:flex;align-items:center;gap:4px;max-width:560px;overflow-x:auto;pointer-events:auto;padding-bottom:1px}
+.shopBagEmpty{font-size:10px;letter-spacing:2px;color:rgba(138,134,160,.7)}
+.shopBagItem{flex:0 0 27px;width:27px;height:27px;font-size:14px;cursor:context-menu}
+.shopSection{margin:0 4px 10px}
+.shopSectionHead{height:27px;display:flex;align-items:center;justify-content:space-between;padding:0 4px;text-align:left;
+  color:var(--gold);font-size:14px;letter-spacing:6px}
+.shopSectionHead small{font-size:11px;letter-spacing:3px;color:var(--dim)}
+#shopFreeItems{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;pointer-events:auto}
+.supplyCard{height:78px;position:relative;display:flex;align-items:center;gap:12px;padding:9px 82px 9px 12px;overflow:hidden;
+  cursor:pointer;text-align:left;border:1px solid rgba(230,195,122,.38);background:linear-gradient(100deg,rgba(34,27,49,.95),rgba(10,9,23,.96));
+  transition:transform .15s,border-color .15s,opacity .15s}
+.supplyCard:hover{transform:translateY(-2px);border-color:var(--gold);box-shadow:0 0 16px rgba(230,195,122,.18)}
+.supplyCard.chosen{border-color:#ffe2a0;box-shadow:inset 0 0 18px rgba(230,195,122,.12)}
+.supplyCard.locked{cursor:default;opacity:.32;filter:grayscale(.7)}
+.supplyCard.locked:hover,.supplyCard.chosen:hover{transform:none}
+.supplyKanji{width:44px;height:44px;flex:0 0 44px;border:1px solid rgba(230,195,122,.62);display:flex;align-items:center;
+  justify-content:center;color:#ffe2a0;font-size:24px;background:rgba(8,7,18,.4)}
+.supplyCopy b{display:block;font-size:16px;letter-spacing:3px;font-weight:normal;margin-bottom:6px}
+.supplyCopy span{display:block;font-size:12px;letter-spacing:1px;color:rgba(225,220,235,.82);white-space:nowrap}
+.supplyPrice{position:absolute;right:11px;top:50%;transform:translateY(-50%);font-size:11px;letter-spacing:2px;color:var(--gold)}
+#shopBaseItems{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;pointer-events:auto}
+.baseShopCard{height:108px;position:relative;padding:11px 10px 9px 54px;overflow:hidden;cursor:pointer;text-align:left;
+  border:1px solid rgba(159,180,216,.4);background:linear-gradient(145deg,rgba(24,22,42,.96),rgba(9,9,21,.97));
+  transition:transform .15s,border-color .15s,opacity .15s}
+.baseShopCard:hover{transform:translateY(-3px);border-color:#cfd8ea;box-shadow:0 0 16px rgba(159,180,216,.18)}
+.baseShopCard.poor{filter:saturate(.55)}
+.baseShopCard.maxed{cursor:default;opacity:.38;filter:grayscale(.65)}
+.baseShopCard.maxed:hover{transform:none}
+.baseKanji{position:absolute;left:10px;top:11px;width:35px;height:35px;border:1px solid rgba(159,180,216,.55);display:flex;
+  align-items:center;justify-content:center;color:#cfd8ea;font-size:20px}
+.baseName{font-size:15px;letter-spacing:2px;margin-bottom:7px}
+.baseDesc{height:39px;font-size:11px;line-height:1.6;letter-spacing:.5px;color:rgba(225,220,235,.8)}
+.baseMeta{display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(159,180,216,.16);padding-top:6px;
+  font-size:10px;letter-spacing:1px;color:var(--dim)}
+.baseMeta b{font-weight:normal;color:#ffe2a0}
+#shopItems{display:flex;justify-content:center;gap:14px;min-height:220px;pointer-events:auto}
+.shopCard{position:relative;width:292px;height:220px;padding:13px 16px 11px;overflow:hidden;cursor:pointer;text-align:center;
+  color:var(--paper);background:linear-gradient(165deg,rgba(31,25,49,.97),rgba(10,9,23,.98));
+  border:1px solid var(--rar,#9fb4d8);border-radius:3px;transition:transform .16s,box-shadow .16s,opacity .16s}
+.shopCard:hover{transform:translateY(-4px);box-shadow:0 9px 28px rgba(0,0,0,.6),0 0 20px var(--rarGlow,rgba(159,180,216,.25))}
+.shopCard.poor{filter:saturate(.55)}
+.shopCard.sold{cursor:default;opacity:.35;filter:grayscale(.75)}
+.shopCard.sold:hover{transform:none;box-shadow:none}
+.shopCard .shopKanji{position:absolute;right:2px;top:-8px;font-size:98px;line-height:1;color:var(--rar,#9fb4d8);opacity:.1}
+.shopCard .shopSeal{position:relative;margin:0 auto 8px;width:37px;height:37px;display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--rar,#9fb4d8);color:var(--rar,#9fb4d8);font-size:21px;background:rgba(6,6,16,.35)}
+.shopCard .shopName{position:relative;font-size:18px;letter-spacing:4px;margin-bottom:9px}
+.shopCard .shopDesc{position:relative;height:58px;font-size:12px;line-height:1.75;letter-spacing:1px;color:rgba(225,220,235,.88)}
+.shopCard .shopTag{position:absolute;left:14px;right:14px;bottom:40px;font-size:10px;letter-spacing:2px;color:var(--rar,#9fb4d8)}
+.shopCard .shopPrice{position:absolute;left:16px;right:16px;bottom:10px;padding-top:8px;border-top:1px solid rgba(230,195,122,.2);
+  font-size:13px;letter-spacing:3px;color:#ffe2a0}
+.shopCard.sold .shopPrice{color:var(--dim)}
+.shopFoot{display:flex;justify-content:center;align-items:center;gap:24px;margin-top:2px;pointer-events:auto}
+.btn.poor{filter:saturate(.5);opacity:.62}
+#rerollCost{font-size:11px;letter-spacing:2px;color:var(--dim);margin-left:9px}
+#shopTip{margin-top:8px;font-size:11px;letter-spacing:3px;color:rgba(160,155,180,.82)}
+
+/* ============ Boss 神兵择取 ============ */
+#weaponSelect{background:radial-gradient(80% 90% at 50% 45%,rgba(31,23,50,.94),rgba(4,5,13,.97))}
+#weaponSelect .panel{width:1080px;padding:24px 34px 28px}
+.weaponSelectTitle{font-size:34px;letter-spacing:14px;color:var(--gold);text-shadow:0 0 20px rgba(230,195,122,.35)}
+.weaponSelectSub{margin:8px 0 18px;font-size:12px;letter-spacing:4px;color:var(--dim)}
+#weaponCurrentSlots{display:flex;justify-content:center;gap:12px;margin-bottom:20px;pointer-events:auto}
+.weaponCurrent{width:280px;padding:9px 13px;text-align:left;border:1px solid rgba(159,180,216,.32);
+  background:rgba(11,11,25,.72);cursor:pointer}
+.weaponCurrent b,.weaponCurrent span{display:block;font-weight:normal}
+.weaponCurrent b{font-size:14px;letter-spacing:2px;color:#dce2ee}
+.weaponCurrent span{margin-top:4px;font-size:10px;letter-spacing:2px;color:var(--dim)}
+.weaponCurrent.replace{border-color:#ffb26b;box-shadow:inset 0 0 18px rgba(255,120,80,.12)}
+.weaponCurrent.replace span{color:#ffb26b}
+#weaponChoices{display:flex;justify-content:center;gap:18px;pointer-events:auto}
+.weaponChoice{position:relative;width:296px;height:270px;padding:19px 22px;overflow:hidden;cursor:pointer;
+  border:1px solid rgba(230,195,122,.55);background:linear-gradient(155deg,rgba(29,24,47,.98),rgba(8,8,20,.98));
+  transition:transform .16s,border-color .16s,box-shadow .16s}
+.weaponChoice:hover{transform:translateY(-5px);border-color:#ffe2a0;box-shadow:0 10px 30px rgba(0,0,0,.55),0 0 22px rgba(230,195,122,.18)}
+.weaponKanji{position:absolute;right:-4px;top:-15px;font-size:130px;color:var(--gold);opacity:.09;line-height:1}
+.weaponName{position:relative;margin-top:35px;font-size:23px;letter-spacing:5px;color:#f3ead9}
+.weaponDesc{position:relative;margin-top:28px;min-height:70px;font-size:13px;line-height:2;letter-spacing:1px;color:rgba(225,220,235,.82)}
+.weaponPerk{position:absolute;left:22px;right:22px;bottom:22px;padding-top:14px;border-top:1px solid rgba(230,195,122,.24);
+  font-size:13px;letter-spacing:2px;color:#ffe2a0}
+#weaponSelectTip{margin-top:18px;font-size:11px;letter-spacing:3px;color:var(--dim)}
+
+/* ============ Boss 珍品奉纳 ============ */
+#itemReward{background:radial-gradient(80% 90% at 50% 45%,rgba(31,23,50,.95),rgba(4,5,13,.98))}
+#itemReward .panel{width:1080px;padding:28px 34px 32px}
+.itemRewardTitle{font-size:34px;letter-spacing:14px;color:var(--gold);text-shadow:0 0 20px rgba(230,195,122,.35)}
+.itemRewardSub{margin:9px 0 25px;font-size:12px;letter-spacing:4px;color:var(--dim)}
+#itemRewardChoices{display:flex;justify-content:center;gap:22px;pointer-events:auto}
+.itemRewardCard{position:relative;width:298px;height:310px;padding:18px 22px;overflow:hidden;cursor:pointer;
+  border:1px solid var(--rar,#e6c37a);background:linear-gradient(155deg,rgba(30,24,48,.98),rgba(8,8,20,.99));
+  transition:transform .16s,box-shadow .16s}
+.itemRewardCard:hover{transform:translateY(-7px);box-shadow:0 12px 34px rgba(0,0,0,.58),0 0 25px color-mix(in srgb,var(--rar) 32%,transparent)}
+.itemRewardCard.cursed{background:linear-gradient(155deg,rgba(48,19,28,.98),rgba(12,7,15,.99))}
+.itemRewardKanji{position:absolute;right:-2px;top:-16px;font-size:132px;line-height:1;color:var(--rar);opacity:.09}
+.itemRewardSeal{position:relative;margin:4px auto 19px;width:46px;height:46px;display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--rar);color:var(--rar);font-size:25px;background:rgba(6,6,16,.4)}
+.itemRewardName{position:relative;font-size:22px;letter-spacing:5px;color:#f3ead9}
+.itemRewardDesc{position:relative;margin-top:28px;font-size:13px;line-height:2;letter-spacing:1px;color:rgba(225,220,235,.84)}
+.itemRewardTag{position:absolute;left:22px;right:22px;bottom:21px;padding-top:12px;border-top:1px solid rgba(230,195,122,.22);
+  font-size:11px;letter-spacing:3px;color:var(--rar)}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="cv" width="1280" height="720"></canvas>
+
+    <!-- 规划时暗角 -->
+    <div id="planVig" class="ovl"></div>
+
+    <!-- HUD -->
+    <div id="hud" class="ovl hidden">
+      <div id="hudTL">
+        <div class="bar hp"><div id="hpFill"></div><span id="hpText"></span></div>
+        <div class="bar mana"><div id="manaFill"></div><div id="manaPreview"></div><span id="manaText"></span></div>
+        <div id="lvlRow"><span id="lvlBadge">Lv.1</span><div class="bar xp"><div id="xpFill"></div></div></div>
+        <div id="weaponWrap"></div>
+        <div id="activeHud">
+          <b id="activeSeal">隐</b>
+          <span id="activeCopy"><b id="activeName">神隐步</b><i id="activeStatus">可发动</i></span>
+          <em id="activeKey">右键</em>
+          <span id="activeTrack"><i id="activeFill"></i></span>
+        </div>
+        <div id="skillWrap"></div>
+        <div id="fateHud"></div>
+        <div id="buildHud"><span class="buildEmpty">流派尚未成形</span></div>
+      </div>
+      <div id="hudTC"><div id="waveText">第 01 / 20 祓</div><span id="timeText">00:30</span><div id="threatText">清净 ・ 敌势 0 / 42</div></div>
+      <div id="bossWrap" class="hidden">
+        <div id="bossName">祟面ノ大天狗</div>
+        <div class="bar boss"><div id="bossFill"></div></div>
+      </div>
+      <div id="hudTR">
+        <div id="killText">祓除 0</div>
+        <div id="jadeText">灵玉 0</div>
+        <div id="comboText"></div>
+      </div>
+      <div id="itemHud">
+        <div id="itemHudHead"><span>携 行 珍 品</span><span id="itemHudCount">尚无珍品</span></div>
+        <div id="itemHudGrid"></div>
+        <div id="itemHudDetail">夜诣商店与 Boss 奉纳可获得珍品</div>
+      </div>
+      <div id="formHud">
+        <div id="formKanji">式</div>
+        <div id="formCopy">
+          <b id="formName">寻式</b>
+          <span id="formDetail">用轨迹书写术式</span>
+          <i id="formTrack"><em id="formProgress"></em></i>
+        </div>
+      </div>
+      <div id="hint">WASD 移动 ・ 左键绘制轨迹 ・ 右键主动术 ・ 1 / 2 切换武器</div>
+    </div>
+
+    <div id="hurtVig"></div>
+    <div id="flash"></div>
+    <div id="rating"></div>
+    <div id="banner"></div>
+
+    <!-- 标题 -->
+    <div id="title" class="screen">
+      <div class="panel">
+        <h1 class="title">一筆祓除</h1>
+        <div class="subtitle">ひとふではらい ・ 夜の社、穢れを祓う</div>
+        <div class="titleActions">
+          <div class="btn" id="btnStart">开 始</div>
+          <div class="btn secondary" id="btnCodex">万 象 图 鉴</div>
+        </div>
+        <div class="howto">
+          <em>WASD</em> 移动聚怪 ・ <em>按住左键</em> 时停绘制轨迹 ・ <em>松开</em> 一笔祓除<br>
+          一笔命中的妖怪越多，神力回馈与祓除评级越高 ・ <em>Esc</em> 暂停 ・ <em>M</em> 静音
+        </div>
+        <div class="settings">
+          <label>音量 <input type="range" id="volSlider" min="0" max="100" value="70"></label>
+          <label>粒子 <select id="qualitySel"><option value="1">华丽</option><option value="0.45">流畅</option></select></label>
+        </div>
+        <div id="bestLine"></div>
+      </div>
+    </div>
+
+    <!-- 开局命格 -->
+    <div id="fateSelect" class="screen hidden">
+      <div class="panel">
+        <div class="fateHead">
+          <div class="fateTitle">命 格 择 定<small>一局一命・选定后不可更换</small></div>
+          <button type="button" id="btnFateBack">返 回</button>
+        </div>
+        <div id="fateChoices"></div>
+      </div>
+    </div>
+
+    <!-- 万象图鉴 -->
+    <div id="encyclopedia" class="screen hidden">
+      <div class="codexPanel">
+        <div class="codexHead">
+          <div class="codexTitle">万 象 图 鉴</div>
+          <button type="button" id="btnCodexClose">返 回</button>
+        </div>
+        <nav id="codexTabs" aria-label="图鉴分类"></nav>
+        <main id="codexBody"></main>
+      </div>
+    </div>
+
+    <!-- 升级 -->
+    <div id="levelup" class="screen hidden">
+      <div class="panel">
+        <div id="lvTitle">神 社 加 护<small>选择一项强化</small></div>
+        <div id="cards"></div>
+      </div>
+    </div>
+
+    <!-- 关后商店 -->
+    <div id="shop" class="screen hidden">
+      <div class="panel">
+        <div class="shopHead">
+          <div class="shopTitle">夜 詣 の 市<small id="shopWaveText">第一祓・清祓完了</small></div>
+          <div class="shopBagCompact">
+            <span>携行珍品・右键返奉一阶</span>
+            <div id="shopBag"><span class="shopBagEmpty">尚无珍品</span></div>
+          </div>
+          <div id="shopJade">灵玉 ・ 0</div>
+        </div>
+        <div class="shopSection">
+          <div class="shopSectionHead"><span>旅 支 度</span><small>四件补给・无偿择一</small></div>
+          <div id="shopFreeItems"></div>
+        </div>
+        <div class="shopSection">
+          <div class="shopSectionHead"><span>常 世 商 品</span><small>本局永久・每阶价增</small></div>
+          <div id="shopBaseItems"></div>
+        </div>
+        <div class="shopSection">
+          <div class="shopSectionHead">
+            <span>秘 藏 珍 品</span>
+            <small>通用秘藏与当前流派专属珍品・随机四件</small>
+          </div>
+          <div id="shopItems"></div>
+        </div>
+        <div class="shopFoot">
+          <div class="btn small" id="btnReroll">换 签<span id="rerollCost"></span></div>
+          <div class="btn small" id="btnNextWave">启 程</div>
+        </div>
+        <div id="shopTip">补给每次只能领取一件 ・ 固定商品可重复购入 ・ 珍品换签只刷新四件随机商品</div>
+      </div>
+    </div>
+
+    <!-- Boss 神兵择取 -->
+    <div id="weaponSelect" class="screen hidden">
+      <div class="panel">
+        <div class="weaponSelectTitle">神 兵 择 取</div>
+        <div class="weaponSelectSub">Boss 遗下的武器将在本局持续生效</div>
+        <div id="weaponCurrentSlots"></div>
+        <div id="weaponChoices"></div>
+        <div id="weaponSelectTip"></div>
+      </div>
+    </div>
+
+    <!-- Boss 珍品奉纳 -->
+    <div id="itemReward" class="screen hidden">
+      <div class="panel">
+        <div class="itemRewardTitle">神 珍 奉 纳</div>
+        <div class="itemRewardSub">祟主消散后留下的珍品・择一收入行囊</div>
+        <div id="itemRewardChoices"></div>
+      </div>
+    </div>
+
+    <!-- 失败 -->
+    <div id="gameover" class="screen hidden">
+      <div class="panel">
+        <div class="deadTitle">力 尽 き た</div>
+        <div class="winSub">巫女倒在了鸟居之前</div>
+        <div class="stats" id="overStats"></div>
+        <div class="btn" id="btnRetry">再 度 参 拜</div>
+      </div>
+    </div>
+
+    <!-- 胜利 -->
+    <div id="victory" class="screen hidden">
+      <div class="panel">
+        <div class="winTitle">祓 除 完 了</div>
+        <div class="winSub">黎明的光重新落回神社的屋檐</div>
+        <div class="stats" id="winStats"></div>
+        <div class="btn" id="btnAgain">再 来 一 局</div>
+      </div>
+    </div>
+
+    <!-- 暂停 -->
+    <div id="pause" class="screen hidden">
+      <div class="panel">
+        <div class="winTitle" style="font-size:42px">小 憩</div>
+        <div class="stats" style="margin:10px 0 24px">
+          <label style="font-size:13px;letter-spacing:2px;color:var(--dim)">音量
+            <input type="range" id="volSlider2" min="0" max="100" value="70" style="accent-color:var(--gold);vertical-align:middle"></label>
+        </div>
+        <div class="btn" id="btnResume">继 续</div>
+        <div style="height:14px"></div>
+        <div class="btn small" id="btnQuit">回 到 鸟 居</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="js/util.js"></script>
+<script src="js/assets.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/input.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/scene.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/upgrades.js"></script>
+<script src="js/weapons.js"></script>
+<script src="js/progression.js"></script>
+<script src="js/encyclopedia.js"></script>
+<script src="js/game.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

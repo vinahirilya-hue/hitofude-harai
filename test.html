@@ -1,0 +1,1489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>smoke test</title></head>
+<body>
+<div id="stage">
+  <canvas id="cv" width="1280" height="720"></canvas>
+  <div id="planVig"></div>
+  <div id="hud">
+    <div class="bar hp"><div id="hpFill"></div><span id="hpText"></span></div>
+    <div class="bar mana"><div id="manaFill"></div><div id="manaPreview"></div><span id="manaText"></span></div>
+    <div id="lvlBadge"></div><div class="bar xp"><div id="xpFill"></div></div><div id="weaponWrap"></div>
+    <div id="activeHud"><b id="activeSeal"></b><span id="activeCopy"><b id="activeName"></b><i id="activeStatus"></i></span><em id="activeKey"></em><span id="activeTrack"><i id="activeFill"></i></span></div>
+    <div id="skillWrap"></div><div id="fateHud"></div><div id="buildHud"></div>
+    <div id="waveText"></div><span id="timeText"></span><div id="threatText"></div>
+    <div id="bossWrap"><div id="bossName"></div><div class="bar boss"><div id="bossFill"></div></div></div>
+    <div id="killText"></div><div id="jadeText"></div><div id="comboText"></div><div id="hint"></div>
+    <div id="formHud"><div id="formKanji"></div><div id="formName"></div><div id="formDetail"></div><div id="formProgress"></div></div>
+    <div id="itemHud"><div id="itemHudHead"></div><span id="itemHudCount"></span><div id="itemHudGrid"></div><div id="itemHudDetail"></div></div>
+  </div>
+  <div id="hurtVig"></div><div id="flash"></div><div id="rating"></div><div id="banner"></div>
+  <div id="title"><div id="btnStart"></div><div id="btnCodex"></div><input id="volSlider"><input id="volSlider2"><select id="qualitySel"></select><div id="bestLine"></div></div>
+  <div id="fateSelect" class="hidden"><button id="btnFateBack"></button><div id="fateChoices"></div></div>
+  <div id="encyclopedia" class="hidden"><button id="btnCodexClose"></button><nav id="codexTabs"></nav><main id="codexBody"></main></div>
+  <div id="levelup"><div id="cards"></div></div>
+  <div id="shop" class="hidden"><div id="shopWaveText"></div><div id="shopJade"></div><div id="shopBag"></div><div id="shopFreeItems"></div><div id="shopBaseItems"></div><div id="shopItems"></div><div id="btnReroll"><span id="rerollCost"></span></div><div id="btnNextWave"></div></div>
+  <div id="weaponSelect" class="hidden"><div id="weaponCurrentSlots"></div><div id="weaponChoices"></div><div id="weaponSelectTip"></div></div>
+  <div id="itemReward" class="hidden"><div id="itemRewardChoices"></div></div>
+  <div id="gameover"><div id="overStats"></div><div id="btnRetry"></div></div>
+  <div id="victory"><div id="winStats"></div><div id="btnAgain"></div></div>
+  <div id="pause"><div id="btnResume"></div><div id="btnQuit"></div></div>
+</div>
+
+<script src="js/util.js"></script>
+<script src="js/assets.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/input.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/scene.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/upgrades.js"></script>
+<script src="js/weapons.js"></script>
+<script src="js/progression.js"></script>
+<script src="js/encyclopedia.js"></script>
+<script src="js/game.js"></script>
+<script src="js/main.js"></script>
+<script>
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    // 停掉 rAF 循环，改全手动驱动
+    window.requestAnimationFrame = () => 0;
+    const log = [];
+    window.onerror = (m, s, l) => { log.push('ONERROR: ' + m + ' @ ' + (s || '').split('/').pop() + ':' + l); };
+    const step = n => { for (let i = 0; i < n; i++) { G.game.update(1 / 60); G.Input.endFrame(); } };
+    const assert = (ok, msg) => { if (!ok) throw new Error('ASSERT: ' + msg); };
+    const skillTotal = game => G.SKILL_ORDER.reduce((sum, id) => sum + (game.skills[id] || 0), 0);
+    try {
+      const g = G.game;
+      const cv = document.getElementById('cv');
+      const ctx = cv.getContext('2d');
+      const pointMouse = (x, y) => {
+        const screen = g.worldToScreen(x, y);
+        G.Input.mouse.x = screen.x;
+        G.Input.mouse.y = screen.y;
+      };
+      const codexCounts = G.Encyclopedia.counts();
+      assert(codexCounts.fates === 8 && codexCounts.builds === 5 && codexCounts.stages === 9 &&
+        codexCounts.weapons === 13 && codexCounts.skills === 17 &&
+        codexCounts.upgrades === G.UPGRADES.length + 2 && codexCounts.items === 76 &&
+        codexCounts.enemies === 22,
+        '图鉴没有收录全部武器、技能、强化、道具或敌人');
+      const codexExpected = {
+        fates: codexCounts.fates, builds: codexCounts.builds, stages: codexCounts.stages,
+        weapons: codexCounts.weapons, skills: codexCounts.skills, upgrades: codexCounts.upgrades,
+        items: codexCounts.items, enemies: codexCounts.enemies
+      };
+      G.Encyclopedia.open('weapons');
+      assert(G.Encyclopedia.isOpen() && document.getElementById('title').classList.contains('hidden'),
+        '主菜单图鉴没有正常打开');
+      for (const id of Object.keys(codexExpected)) {
+        G.Encyclopedia.render(id);
+        assert(document.querySelectorAll('#codexBody .codexCard').length === codexExpected[id] &&
+          document.querySelector('[data-codex-tab="' + id + '"].active'),
+          '图鉴分类“' + id + '”的分组或数量错误');
+      }
+      G.Encyclopedia.render('skills');
+      assert(G.SKILL_ORDER.every(id => !!G.SKILLS[id].trigger) &&
+        G.ACTIVE_SKILL_ORDER.every(id => !!G.ACTIVE_SKILLS[id].cooldown) &&
+        document.querySelectorAll('#codexBody .codexTrigger').length === G.SKILL_ORDER.length + G.ACTIVE_SKILL_ORDER.length,
+        '自动技能或主动术式没有在图鉴中显示明确触发条件');
+      G.Encyclopedia.render('enemies');
+      assert(document.querySelectorAll('#codexBody .codexGroup').length === 4,
+        '普通怪、精英怪、Boss 和战场法则没有在妖怪图鉴中分组');
+      G.Encyclopedia.close();
+      assert(!G.Encyclopedia.isOpen() && !document.getElementById('title').classList.contains('hidden'),
+        '图鉴关闭后没有返回主菜单');
+      log.push('[0] 万象图鉴通过 命格=' + codexCounts.fates + ' 流派=' + codexCounts.builds + ' 祟章=' + codexCounts.stages +
+        ' 神兵=' + codexCounts.weapons + ' 秘法=' + codexCounts.skills +
+        ' 加护=' + codexCounts.upgrades + ' 道具=' + codexCounts.items + ' 妖怪=' + codexCounts.enemies);
+      g.openFateSelect();
+      assert(g.state === 'fate' && document.querySelectorAll('#fateChoices .fateCard').length === 8 &&
+        document.getElementById('title').classList.contains('hidden'),
+        '开局命格选择界面没有显示全部八种命格');
+      g.closeFateSelect();
+      assert(g.state === 'title' && !document.getElementById('title').classList.contains('hidden'),
+        '命格选择返回主菜单失败');
+
+      const baseStats = G.computeStats({});
+      g.start('dancer');
+      assert(g.player.stats.dmg < baseStats.dmg && g.fateActiveCooldownMul() === 0.65,
+        '神乐舞姬没有降低主祓除伤害或缩短主动术调息');
+      g.skills = Object.fromEntries(G.SKILL_ORDER.slice(0, 4).map(id => [id, 1]));
+      const skillLevelsBeforeCap = skillTotal(g);
+      g.collectSkillDrop(G.SKILL_ORDER[4]);
+      assert(g.skillSlotLimit() === 4 && g.skillSlotCount() === 4 &&
+        skillTotal(g) === skillLevelsBeforeCap + 1 && !g.skills[G.SKILL_ORDER[4]],
+        '普通命格满四个秘法槽后没有改为升级已装备秘法');
+
+      g.start('shura');
+      assert(g.player.maxHp === Math.round(baseStats.maxHp * 0.55) &&
+        g.player.stats.dmg > baseStats.dmg * 1.3 && g.player.stats.repeatHits >= 1,
+        '修罗命格没有正确交换生命、伤害与重复锁定');
+
+      g.start('offering');
+      const offeringBaseItem = G.SHOP_BASE_ITEMS[0];
+      assert(G.shopBasePrice(g, offeringBaseItem) === Math.round(offeringBaseItem.baseCost * 0.75) &&
+        g.scaledJade(4) === 10 && g.player.stats.dmg < baseStats.dmg,
+        '奉纳命格没有降低价格、提高灵玉或削弱直接战力');
+
+      g.start('omagatoki');
+      g.player.xp = 0; g.gainXp(4);
+      assert(g.player.xp === 5 && g.fate().densityMul === 1.25 &&
+        g.fate().eliteIntervalMul < 0.8,
+        '逢魔命格没有提高收益、敌势上限或精英频率');
+
+      g.start('moonTide');
+      g.player.mana = 0; g.player.state = 'move'; g.player.update(1, g);
+      assert(g.player.mana === 0, '月潮命格仍在自然恢复神力');
+      g.moonTideT = 0.01; g.updateFate(0.02);
+      assert(g.player.mana >= g.player.maxMana * 0.44 && g.moonTideWindow > 2 &&
+        g.attackCost() <= Math.ceil(g.player.stats.cost * 0.5),
+        '月潮没有周期回灵、开启潮涌或降低祓除消耗');
+
+      g.start('mirror');
+      const mirrorTarget = g.spawnEnemy('chaser', g.player.x + 130, g.player.y);
+      mirrorTarget.spawnT = 0; mirrorTarget.hp = mirrorTarget.maxHp = 9999;
+      const mirrorHp = mirrorTarget.hp;
+      for (let i = 0; i < 5; i++) g.onTrajectoryBulletCut(g.player.x, g.player.y);
+      assert(g.mirrorShield === 1 && g.mirrorCutCount === 0 && mirrorTarget.hp < mirrorHp,
+        '镜心命格没有在五次断弹后生成神镜与返照攻击');
+
+      g.start('bladeless');
+      const bladelessDmg = g.player.stats.dmg;
+      g.weaponPending = true; g.shopPending = false; g.itemRewardPending = false; g.state = 'play';
+      g.openWeaponSelect();
+      assert(g.weapons.length === 1 && g.bladeMastery === 2 &&
+        g.player.stats.dmg > bladelessDmg && document.getElementById('weaponSelect').classList.contains('hidden'),
+        '无刀命格没有阻止第二武器并把祟主奖励转化为唯一神兵开眼');
+
+      g.start('attendant');
+      assert(g.fateId === 'attendant' && g.skillSlotLimit() === 6 && g.skillSlotCount() === 1,
+        '百鬼侍从没有获得六个秘法槽或开局随机秘法');
+      log.push('[0a] 八命格通过 百鬼/神乐/修罗/奉纳/无刀/逢魔/月潮/镜心・秘法四槽');
+      g.player.maxHp = g.player.hp = 99999; // 防测试途中死亡
+      step(180);
+      assert(g.wave === 1 && g.state === 'play' && g.enemies.length > 0, '首关未正常运行');
+      assert(G.WORLD_W > G.W && G.WORLD_H > G.H && g.camera.zoom < 1, '大地图或缩放镜头没有启用');
+      assert(G.getWave(1).spawnInterval === 1.25 && G.getWave(1).maxEnemies === 42 &&
+        G.getWave(1).squadMin === 3 && G.getWave(1).squadMax === 5,
+        '首关小队刷新或提高后的出怪量没有载入');
+      assert(G.WAVE_CHAPTERS.every(chapter => !('hint' in chapter)),
+        '关卡开场仍保留了指导玩家操作的攻略文案');
+      assert(g.enemies.every(e => G.util.fieldContains(e.x, e.y, e.r + 10)),
+        '自然刷新的敌人越出了庭院战场');
+      assert(G.SHOP_RELICS.length === 66 && G.SHOP_RELICS.filter(x => x.mechanic).length === 27 &&
+        G.SHOP_RELICS.filter(x => x.reqWeapon).length === 7 &&
+        G.SHOP_RELICS.filter(x => x.reqTwoWeapons).length === 1 &&
+        G.SHOP_RELICS.filter(x => x.activeSkill).length === 5,
+        '新增技能珍品、神兵专属珍品或主动术契没有载入');
+      const superPurgeRelic = G.SHOP_RELICS.find(x => x.id === 'superPurgeSeal');
+      assert(superPurgeRelic && superPurgeRelic.rar === 2 && superPurgeRelic.max === 1,
+        '超祓没有改为独立的高级珍品');
+      g.jadeBonusCarry = 0;
+      assert(g.scaledJade(1) === 2 && g.scaledJade(4) === 8, '普通怪与精英灵玉掉落量没有翻倍');
+      pointMouse(g.player.x + 80, g.player.y - 50);
+      const pointerProbe = g.pointerWorld();
+      assert(Math.abs(pointerProbe.x - g.player.x - 80) < 0.01 && Math.abs(pointerProbe.y - g.player.y + 50) < 0.01,
+        '屏幕坐标没有正确换算为世界坐标');
+      const cameraProbeX = g.camera.x;
+      g.player.x += 220;
+      g.updateCamera(0.5);
+      assert(g.camera.x > cameraProbeX + 50, '角色移动时背景镜头没有跟随');
+      g.player.x = G.WORLD_W / 2;
+      g.updateCamera(0, true);
+      const nativeRandom = Math.random;
+      const spawnRolls = [0.25, 0.7];
+      Math.random = () => spawnRolls.length ? spawnRolls.shift() : 0.5;
+      const fieldSpawn = g.spawnEnemy('chaser');
+      Math.random = nativeRandom;
+      assert(G.util.fieldContains(fieldSpawn.x, fieldSpawn.y, fieldSpawn.r + 10) &&
+        fieldSpawn.y > G.FIELD.cy,
+        '敌人没有在整个庭院内刷新，或落进了天空远景');
+      g.enemies.splice(g.enemies.indexOf(fieldSpawn), 1);
+      const skySpawn = g.spawnEnemy('chaser', G.FIELD.cx, 0);
+      assert(G.util.fieldContains(skySpawn.x, skySpawn.y, skySpawn.r + 10) &&
+        skySpawn.y >= G.FIELD.cy - G.FIELD.ry,
+        '指定坐标生成的敌人仍能出现在天空');
+      g.enemies.splice(g.enemies.indexOf(skySpawn), 1);
+      g.player.x = G.FIELD.cx; g.player.y = 0;
+      g.player.update(0, g);
+      assert(G.util.fieldContains(g.player.x, g.player.y, g.player.r + 18),
+        '玩家仍能移动到庭院之外');
+      g.player.x = G.FIELD.cx; g.player.y = G.FIELD.cy;
+      const squadProbe = g.spawnSquad(5, false);
+      assert(squadProbe.length === 5 && new Set(squadProbe.map(e => e.squadId)).size === 1 &&
+        squadProbe.every(e => G.util.dist(e.x, e.y, squadProbe[0].x, squadProbe[0].y) < 130),
+        '敌人没有按紧凑小队编成刷新');
+      g.enemies = g.enemies.filter(e => !squadProbe.includes(e));
+      assert([5, 10, 15, 20].every(n => G.getWave(n).boss && G.getWave(n).duration === 90) &&
+        [1, 4].every(n => G.getWave(n).duration === 30) &&
+        [6, 9].every(n => G.getWave(n).duration === 40) &&
+        [11, 14].every(n => G.getWave(n).duration === 50) &&
+        [16, 19].every(n => G.getWave(n).duration === 60),
+        'Boss 90 秒或普通关分段时长配置错误');
+      assert(G.WAVE_CHAPTERS.length === 4 && G.WAVE_TRIALS.length === 5 &&
+        [1, 6, 11, 16].map(n => G.getWave(n).chapterId).join(',') ===
+          'shadowHunt,curseRain,bindingGrove,evernight' &&
+        [1, 2, 3, 4, 5].map(n => G.getWave(n).trialId).join(',') ===
+          'opening,horde,assault,elite,boss' &&
+        new Set(G.WAVE_CHAPTERS.map(x => x.formation)).size === 4 &&
+        new Set(G.WAVE_CHAPTERS.map(x => x.event)).size === 4,
+        '四章主题、五段章内节奏、敌群阵型或战场事件没有载入');
+      g.beginWave(6, false); g.enemies = []; g.bullets = []; g.stageEventT = 0;
+      g.updateStageEvent(0.02, G.getWave(6), 50);
+      assert(g.bullets.length >= 6, '咒雨之庭没有生成可用轨迹斩断的环形来弹');
+      g.beginWave(11, false); g.enemies = []; g.soulLinks = [];
+      for (let i = 0; i < 4; i++) {
+        const e = g.spawnEnemy('chaser', 500 + i * 90, 330); e.spawnT = 0;
+      }
+      g.stageEventT = 0; g.updateStageEvent(0.02, G.getWave(11), 60);
+      assert(g.soulLinks.filter(x => x.active).length === 2,
+        '缚阵之森没有把场上敌人结成需要横切的共生赤线');
+      g.beginWave(16, false); g.enemies = []; g.stageEventT = 0;
+      g.updateStageEvent(0.02, G.getWave(16), 70);
+      assert(g.enemies.length >= 4 &&
+        g.enemies.some(e => ['splitter','siphon','guardian','binder','chanter'].includes(e.type)),
+        '百鬼常暗没有生成高阶异种混成妖潮');
+      g.beginWave(1, false); g.player.maxHp = g.player.hp = 99999;
+      log.push('[1a] 四章关卡通过 影狩/咒雨/缚阵/常暗');
+      assert(G.getWave(20).hpMul > G.getWave(8).hpMul * 2.5 &&
+        G.getWave(20).bossHpMul > G.getWave(10).bossHpMul * 2 &&
+        G.getWave(20).enemyDamageMul > 2.7 && G.getWave(20).enemySpeedMul > 1.3 &&
+        G.getWave(20).projectileSpeedMul > 1.4 && G.getWave(20).enemyAttackRate > 1.35 &&
+        G.getWave(20).hurtGrace <= 0.6 && G.getWave(20).postAttackGrace <= 0.11 &&
+        G.getWave(20).assaultChance >= 0.47 && G.getWave(20).bossDamageMul >= 2.2 &&
+        G.getWave(20).eliteCap === 3 &&
+        G.getWave(3).eliteDelay < G.getWave(3).duration,
+        '后期生命、伤害、追击、弹幕、近身刷新或受击窗口没有进入分段成长');
+      const firstWaveHitsToFall = Math.ceil(100 / Math.round(8 * G.getWave(1).enemyDamageMul));
+      const lastWaveFinalDamage = Math.round(8 * G.getWave(20).enemyDamageMul) * 1.35;
+      const lastWaveHitsToFall = Math.ceil(100 / lastWaveFinalDamage);
+      assert(firstWaveHitsToFall >= 12 && lastWaveHitsToFall <= 4,
+        '基础影妖的实际致死次数没有从前期教学余裕收紧到后期高压');
+      const newEnemyProbe = [
+        new G.Moth(200, 200, 1), new G.Guardian(220, 200, 1), new G.Chanter(240, 200, 1),
+        new G.WardenElite(260, 200, 1), new G.ReaperElite(280, 200, 1)
+      ];
+      assert(newEnemyProbe.map(e => e.type + ':' + (e.eliteKind || '')).join('|') ===
+        'moth:|guardian:|chanter:|elite:warden|elite:reaper' &&
+        newEnemyProbe[1].shell === 1 && newEnemyProbe[3].auraT > 0 && newEnemyProbe[4].st === 'roam',
+        '三种新小怪或两种新精英没有完整载入');
+      for (const e of newEnemyProbe) { e.spawnT = 0; e.update(1 / 60, g); e.draw(ctx, g); }
+      const ecologyProbe = [
+        new G.Splitter(300, 240, 1, false), new G.Siphon(340, 240, 1), new G.Binder(380, 240, 1),
+        new G.SummonerElite(420, 240, 1), new G.SealerElite(460, 240, 1)
+      ];
+      assert(ecologyProbe.map(e => e.type + ':' + (e.eliteKind || '')).join('|') ===
+        'splitter:|siphon:|binder:|elite:summoner|elite:sealer' &&
+        ecologyProbe[0].splitStage === 1 && ecologyProbe[1].drain === 10 &&
+        ecologyProbe[2].projectileDmg === 10 && ecologyProbe[3].summonT > 0 &&
+        ecologyProbe[4].sealT > 0 && G.ENEMY_ROSTER.length === 9 && G.ELITE_ROSTER.length === 5,
+        '分裂、吸灵、布阵、召唤或封脉单位没有完整载入');
+      for (const e of ecologyProbe) { e.spawnT = 0; e.update(1 / 60, g); e.draw(ctx, g); }
+      const splitBefore = g.enemies.length;
+      const splitParent = new G.Splitter(520, 260, 1, false);
+      g.onKill(splitParent);
+      const splitChildren = g.enemies.slice(splitBefore);
+      assert(splitChildren.length === 2 && splitChildren.every(e => e.type === 'splinter' && e.noLoot),
+        '裂面死亡后没有生成两只无额外掉落的碎面');
+      g.enemies.splice(splitBefore);
+      const manaBeforeDrain = g.player.mana;
+      assert(g.drainPlayerMana(9, 500, 240, '测试') === Math.min(9, manaBeforeDrain) &&
+        g.player.mana === Math.max(0, manaBeforeDrain - 9),
+        '蚀灵与封脉共用的神力损失入口失败');
+      g.player.mana = manaBeforeDrain;
+      const mechanicEnemyStart = g.enemies.length, mechanicBulletStart = g.bullets.length;
+      const siphonMechanic = new G.Siphon(g.player.x + 60, g.player.y, 1);
+      siphonMechanic.spawnT = 0; siphonMechanic.chargeT = 0.001;
+      siphonMechanic.update(0.01, g);
+      const manaAfterSiphon = g.player.mana;
+      const binderMechanic = new G.Binder(g.player.x + 260, g.player.y, 1);
+      binderMechanic.spawnT = 0; binderMechanic.aim = { x: g.player.x + 160, y: g.player.y };
+      binderMechanic.castT = 0.001; binderMechanic.update(0.01, g);
+      const summonMechanic = new G.SummonerElite(g.player.x + 300, g.player.y, 1);
+      summonMechanic.spawnT = 0; summonMechanic.chargeT = 0.001; summonMechanic.update(0.01, g);
+      const sealerMechanic = new G.SealerElite(g.player.x + 120, g.player.y, 1);
+      sealerMechanic.spawnT = 0; sealerMechanic.chargeT = 0.001; sealerMechanic.update(0.01, g);
+      assert(manaAfterSiphon < manaBeforeDrain && g.bullets.length >= mechanicBulletStart + 7 &&
+        g.enemies.length >= mechanicEnemyStart + 3 && g.manaSealT >= 3.4,
+        '吸灵脉冲、脚下咒阵、召唤护卫或封脉实战触发失败');
+      g.enemies.splice(mechanicEnemyStart); g.bullets.splice(mechanicBulletStart);
+      g.player.mana = manaBeforeDrain; g.manaSealT = 0;
+      const bossVariants = [1, 2, 3, 4].map(tier => new G.Boss(1, 1, tier));
+      assert(bossVariants.map(b => b.variant).join(',') === 'tengu,oni,fox,void' &&
+        bossVariants[1].attackPool.includes('quake') &&
+        bossVariants[2].attackPool.includes('blink') &&
+        bossVariants[3].attackPool.includes('spiral') &&
+        bossVariants.map(b => b.orbs.length).join(',') === '5,4,6,8',
+        '四阶段 Boss 的外形弱点或独立招式池没有载入');
+      for (const b of bossVariants) {
+        b.spawnT = 0; b.atkT = 0; b.update(1 / 60, g); b.draw(ctx);
+        assert(b.attackPool.includes(b.atk), 'Boss 没有从自身独立招式池发动攻击');
+      }
+      const phaseProbe = bossVariants[3];
+      phaseProbe.atk = null; phaseProbe.atkT = 2; phaseProbe.hp = phaseProbe.maxHp * 0.49;
+      phaseProbe.update(1 / 60, g);
+      assert(phaseProbe.enraged && phaseProbe.atkT < 0.6,
+        'Boss 半血后没有进入独立二阶段并加快攻击循环');
+      g.state = 'play'; g.bossCurses = []; g.soulLinks = []; g.enemies = []; g.delayed = [];
+      g.boss = bossVariants[0]; g.triggerBossSignature(g.boss);
+      assert(g.bossCurses.length === 2 && g.bossCurses.every(c => c.kind === 'cut'),
+        '大天狗的风切双门没有同时生成两道可截断赤裂');
+      g.bossCurses = []; g.delayed = []; g.boss = bossVariants[1]; g.triggerBossSignature(g.boss);
+      assert(g.delayed.length === 1, '酒吞童子的鬼宴地鸣没有生成延迟走位判定');
+      g.delayed = []; g.soulLinks = []; g.enemies = []; g.boss = bossVariants[2]; g.triggerBossSignature(g.boss);
+      assert(g.enemies.length === 4 && g.soulLinks.filter(x => x.active).length === 2,
+        '玉藻的四狐连契没有生成两组无敌狐阵');
+      g.bossCurses = []; g.soulLinks = []; g.enemies = []; g.boss = bossVariants[3];
+      g.triggerBossSignature(g.boss);
+      assert(g.bossCurses.length === 2 && new Set(g.bossCurses.map(c => c.kind)).size === 2,
+        '黄泉主的万象双咒没有同时生成两种轨迹解题');
+      g.boss = null; g.bossCurses = []; g.soulLinks = []; g.enemies = []; g.delayed = [];
+      log.push('[2a] 四祟主权能通过 双门/地鸣/狐契/双咒');
+      assert(G.getWave(1).skillDrop >= 0.0035 && G.getWave(1).skillDrop < 0.004 &&
+        G.getWave(20).skillDrop <= 0.006 && G.getWave(20).skillDrop > G.getWave(1).skillDrop,
+        '高怪量下的普通敌人技能掉率没有降至合理区间');
+      assert(g.activeWeapon().id === 'ritualBlade', '开局没有保留当前御神刀玩法');
+      assert(g.activeSkillId === 'dodge' && G.Input.mouse.rD === false,
+        '开局主动槽或鼠标右键输入状态没有初始化');
+      g.enemies = []; g.bullets = []; g.player.state = 'move'; g.player.iTime = 0; g.activeCooldown = 0;
+      g.player.x = G.WORLD_W / 2; g.player.y = G.WORLD_H / 2;
+      const dodgeStart = { x: g.player.x, y: g.player.y };
+      pointMouse(g.player.x + 500, g.player.y);
+      const dodgeBullet = new G.Bullet(g.player.x + 130, g.player.y, 0, 0, 1);
+      g.bullets.push(dodgeBullet);
+      assert(g.useActiveSkill() && G.util.dist(dodgeStart.x, dodgeStart.y, g.player.x, g.player.y) > 280 &&
+        dodgeBullet.dead && g.player.iTime >= 0.28 && g.activeCooldown > 4.9,
+        '神隐步没有完成右键位移、无敌或沿途断弹');
+
+      g.player.x = G.WORLD_W / 2; g.player.y = G.WORLD_H / 2; g.player.state = 'move';
+      g.enemies = []; g.bullets = []; g.equipActiveSkill('shockwave');
+      const shockTarget = g.spawnEnemy('chaser', g.player.x + 90, g.player.y);
+      shockTarget.spawnT = 0; shockTarget.hp = shockTarget.maxHp = 9999;
+      const shockHp = shockTarget.hp;
+      const shockBullet = new G.Bullet(g.player.x + 70, g.player.y, 0, 0, 1);
+      g.bullets.push(shockBullet);
+      assert(g.useActiveSkill() && shockTarget.hp < shockHp && shockTarget.kx > 0 && shockBullet.dead,
+        '退魔震没有造成近身伤害、击退或震碎咒弹');
+
+      g.enemies = []; g.bullets = []; g.equipActiveSkill('vacuum');
+      const vacuumTarget = g.spawnEnemy('chaser', g.player.x + 220, g.player.y);
+      vacuumTarget.spawnT = 0; vacuumTarget.hp = vacuumTarget.maxHp = 9999; vacuumTarget.kx = 0; vacuumTarget.ky = 0;
+      pointMouse(g.player.x + 330, g.player.y);
+      assert(g.useActiveSkill() && !!g.activeVacuum, '引魂风穴没有生成前方吸附区');
+      g.updateActiveVacuum(0.12);
+      assert(vacuumTarget.kx > 0 && g.activeVacuum.t < g.activeVacuum.maxT,
+        '引魂风穴没有持续把前方敌人吸向焦点');
+
+      g.enemies = []; g.bullets = []; g.soulLinks = []; g.bossCurses = []; g.delayed = [];
+      g.activeVacuum = null; g.equipActiveSkill('aftertrail');
+      const afterTarget = g.spawnEnemy('chaser', g.player.x + 170, g.player.y);
+      afterTarget.spawnT = 0; afterTarget.hp = afterTarget.maxHp = 9999;
+      const afterMarked = g.spawnEnemy('chaser', g.player.x + 170, g.player.y + 220);
+      afterMarked.spawnT = 0; afterMarked.hp = afterMarked.maxHp = 9999;
+      const linkA = g.spawnEnemy('chaser', g.player.x + 245, g.player.y - 120);
+      const linkB = g.spawnEnemy('chaser', g.player.x + 245, g.player.y + 120);
+      linkA.spawnT = linkB.spawnT = 0;
+      const afterLink = g.createSoulLink(linkA, linkB);
+      const afterBullet = new G.Bullet(g.player.x + 110, g.player.y, 0, 0, 1);
+      g.bullets.push(afterBullet);
+      const afterCurse = {
+        kind: 'cut', x: g.player.x + 280, y: g.player.y, r: 58, t: 6, maxT: 6, dead: false,
+        a: { x: g.player.x + 280, y: g.player.y - 130 },
+        b: { x: g.player.x + 280, y: g.player.y + 130 }
+      };
+      g.bossCurses.push(afterCurse);
+      g.lastAttackPath = {
+        pts: [{ x: g.player.x, y: g.player.y }, { x: g.player.x + 340, y: g.player.y }],
+        cum: [0, 340], L: 340, weapon: 'ritualBlade', targets: [afterMarked]
+      };
+      const afterHp = afterTarget.hp, afterMarkedHp = afterMarked.hp;
+      assert(g.useActiveSkill() && afterTarget.hp < afterHp && afterBullet.dead &&
+        !afterLink.active && afterCurse.dead && g.activeCooldown === 11,
+        '返迹・残光没有强化沿线伤害、断弹、破契、解咒或缩短冷却');
+      step(12);
+      assert(afterMarked.hp < afterMarkedHp && afterMarked.vulnT > 1.8,
+        '返迹・残光没有追斩已经离开旧轨迹的上一笔幸存目标');
+
+      g.enemies = []; g.equipActiveSkill('empower');
+      const normalLimit = g.player.stats.trailLen * (g.activeWeapon().trailMul || 1);
+      const normalCost = g.player.stats.cost;
+      assert(g.useActiveSkill() && g.activeEmpowerT > 4.9, '一笔入神没有进入五秒待发状态');
+      g.beginPlan();
+      assert(g.planEmpowered && Math.abs(g.trailLimit() - normalLimit * 1.4) < 0.01 &&
+        g.attackCost() === Math.max(1, Math.ceil(normalCost * 0.5)),
+        '一笔入神没有强化下一笔的长度或降低神力消耗');
+      g.cancelPlanning();
+      g.equipActiveSkill('dodge');
+      g.enemies = []; g.bullets = []; g.activeCooldown = 0; g.activeVacuum = null; g.lastAttackPath = null;
+      g.player.state = 'move'; g.player.iTime = 1;
+      log.push('[3a] 主动术式通过 神隐步/退魔震/引魂风穴/返迹残光/一笔入神');
+      const wave8Sustain = G.computeStats({ cost: 3, spring: 3 });
+      const maxBaseReturn = g.manaReturnForHits(30);
+      assert(wave8Sustain.cost > 18 && wave8Sustain.regen < 10 &&
+        maxBaseReturn <= 9 && maxBaseReturn + wave8Sustain.cost * 0.2 < wave8Sustain.cost,
+        '第八波附近的省神、涌泉或基础返灵仍可形成默认永动');
+      const savedStatsForMana = g.player.stats, savedManaForMana = g.player.mana;
+      g.player.stats = wave8Sustain; g.player.mana = 0; g.player.state = 'fin';
+      g.player.update(1, g);
+      assert(g.player.mana === 0, '规划、冲刺或收招期间仍在自然恢复神力');
+      g.player.state = 'move'; g.player.update(1, g);
+      assert(g.player.mana > 0, '回到走位状态后没有恢复神力');
+      g.player.stats = savedStatsForMana; g.player.mana = savedManaForMana;
+      const oldTrail = g.trail, oldCum = g.trailCum, oldTrailLen = g.trailLen;
+      const sevenPassTrail = [];
+      for (let i = 0; i < 8; i++) sevenPassTrail.push({ x: i % 2 ? 820 : 360, y: 360 });
+      g.trail = sevenPassTrail;
+      g.trailCum = sevenPassTrail.map((_, i) => i * 460);
+      g.trailLen = 3220;
+      const repeatPasses = g.trailPasses(640, 360, 50, 7);
+      const retraceStats = G.computeStats({ retrace: 3 });
+      assert(repeatPasses.length === 7 && retraceStats.repeatHits === 6 && retraceStats.maxLock === 13,
+        '返祓满级没有达到单体7斩或最大锁定数累计+6');
+      const expansionStats = G.computeStats({
+        execution: 1, crowdEdge: 4, lastStand: 1, reservoir: 2, comboGuard: 2, soulStudy: 1
+      });
+      assert(expansionStats.execute === 0.25 && expansionStats.crowdDmg === 0.4 &&
+        expansionStats.lowHpDmg === 0.3 && expansionStats.maxMana === 140 &&
+        expansionStats.comboShield === 8 && expansionStats.xpMul === 1.2,
+        '六种新强化没有正确写入角色数值');
+      const combatProbe = new G.Chaser(500, 300, 1);
+      combatProbe.hp = combatProbe.maxHp * 0.3;
+      const savedCombatState = {
+        stats: g.player.stats, hp: g.player.hp, maxHp: g.player.maxHp, dash: g.dash
+      };
+      g.player.hp = 30; g.player.maxHp = 100;
+      g.dash = { hits: new Array(20).fill({}), L: 500, weapon: 'ritualBlade', weaponDmgMul: 1 };
+      g.player.stats = G.computeStats({});
+      const normalProbeDmg = g.calcDmg(combatProbe, 0, { t: combatProbe, repeat: 0 });
+      g.player.stats = expansionStats;
+      const expansionProbeDmg = g.calcDmg(combatProbe, 0, { t: combatProbe, repeat: 0 });
+      assert(expansionProbeDmg > normalProbeDmg * 1.8,
+        '斩杀、百祟锋或背水祝词没有进入实际伤害结算');
+      g.player.stats = savedCombatState.stats; g.player.hp = savedCombatState.hp;
+      g.player.maxHp = savedCombatState.maxHp; g.dash = savedCombatState.dash;
+      g.trail = oldTrail; g.trailCum = oldCum; g.trailLen = oldTrailLen;
+      log.push('[1] 首关运行 wave=' + g.wave + ' enemies=' + g.enemies.length + ' state=' + g.state);
+      log.push('[2] 关卡配置=' + G.WAVES.map(w => w.duration).filter((v, i) => i === 0 || v !== G.WAVES[i - 1].duration).join('/') + ' Boss=' + G.WAVES.filter(w => w.boss).map(w => w.id).join(','));
+
+      // 画圈锁敌
+      for (let i = 0; i < 10; i++) { const a = i / 10 * 6.28; g.spawnEnemy('chaser', g.player.x + Math.cos(a) * 140, g.player.y + Math.sin(a) * 120); }
+      step(40);
+      pointMouse(g.player.x, g.player.y);
+      G.Input.mouse.down = true; G.Input.mouse.jD = true;
+      step(1);
+      log.push('[3] planning=' + g.planning + ' state=' + g.player.state);
+      for (let i = 1; i <= 26; i++) {
+        const a = i / 26 * 6.28;
+        pointMouse(g.player.x + Math.cos(a) * 150, g.player.y + Math.sin(a) * 130);
+        step(1);
+      }
+      g.draw(ctx); // 规划态绘制（轨迹/封印/落点）
+      log.push('[4] locks=' + g.locks.length + ' trailLen=' + Math.round(g.trailLen) + ' 规划绘制OK');
+      G.Input.mouse.down = false;
+      step(1);
+      log.push('[5] 释放后 state=' + g.player.state + ' combo=' + g.combo);
+      step(150);
+      log.push('[6] 冲刺结算完 state=' + g.player.state + ' kills=' + g.kills + ' mana=' + Math.round(g.player.mana));
+
+      // 全强化路径（狐火/回响/符札/全屏净化）
+      g.owned = { fox: 2, foxTrail: 1, foxBurst: 1, echo: 1, zone: 1, shock: 1, ofuda: 1, ofudaSpread: 1, ofudaVuln: 1, purge: 1 };
+      g.player.stats = G.computeStats(g.owned);
+      g.player.mana = 100;
+      for (let i = 0; i < 15; i++) { const a = i / 15 * 6.28; g.spawnEnemy('chaser', g.player.x + Math.cos(a) * 130, g.player.y + Math.sin(a) * 110); }
+      step(40);
+      pointMouse(g.player.x, g.player.y);
+      G.Input.mouse.down = true; G.Input.mouse.jD = true;
+      step(1);
+      for (let i = 1; i <= 26; i++) {
+        const a = i / 26 * 6.28;
+        pointMouse(g.player.x + Math.cos(a) * 140, g.player.y + Math.sin(a) * 120);
+        step(1);
+      }
+      G.Input.mouse.down = false;
+      step(1);
+      step(400); // 净化+狐火+回响+符札+区域
+      g.draw(ctx);
+      log.push('[7] 全强化 kills=' + g.kills + ' fox=' + g.foxfires.length + ' zones=' + g.zones.length + ' state=' + g.player.state);
+
+      // 即时升级流程
+      g.gainXp(60);
+      step(5);
+      assert(g.state === 'levelup', '经验升级没有即时打开');
+      log.push('[8] levelup state=' + g.state + ' cards=' + document.querySelectorAll('.card').length);
+      let guard = 0;
+      while (g.pendingLevels > 0 && guard++ < 20) g.chooseCard(0);
+      log.push('[9] 选完卡 state=' + g.state + ' owned=' + JSON.stringify(g.owned));
+
+      // 技能拾取、落雷同帧反馈，以及三种向未锁定敌人扩散的新技能
+      // 前面的实战模拟可能随机捡到技能；这里重置技能池，避免测试受随机掉落干扰。
+      g.skills = {};
+      g._skBadge = '';
+      g.collectSkillDrop('thunder');
+      const ta = g.spawnEnemy('chaser', 520, 260), tb = g.spawnEnemy('dasher', 760, 260);
+      ta.hp = ta.maxHp = 9999; tb.hp = tb.maxHp = 9999;
+      const thunderQueueBefore = g.delayed.length;
+      g.castThunder([{ t: ta }, { t: tb }], 1);
+      assert(g.delayed.length === thunderQueueBefore + 1, '雷击仍按目标依次排队');
+      step(5);
+      const thunderPaused = g.hitstop > 0;
+      step(35);
+      assert(thunderPaused, '雷击没有触发顿帧');
+      for (const id of G.SKILL_ORDER.slice(1)) g.collectSkillDrop(id);
+      assert(G.SKILL_ORDER.length === 12 && g.skillSlotCount() === 6 &&
+        G.SKILL_ORDER.some(id => !g.skills[id]),
+        '百鬼侍从没有把自动技能限制在六个槽位');
+      // 以下为逐项验证十二技能的测试态；正式游戏仍由 collectSkillDrop 强制执行槽位上限。
+      g.skills = Object.fromEntries(G.SKILL_ORDER.map(id => [id, 1]));
+      g._skBadge = ''; g.rebuildStats(); g.refreshHud();
+      assert(G.SKILLS.chainLightning.range[2] > G.SKILLS.chainLightning.range[0] &&
+        G.SKILLS.chainLightning.maxLinks[2] > G.SKILLS.chainLightning.maxLinks[0] &&
+        G.SKILLS.chainLightning.dmgMul[2] > G.SKILLS.chainLightning.dmgMul[0],
+        '链雷升级没有同时增加伤害、范围与链接数');
+
+      g.enemies = []; g.delayed = []; g.dash = null;
+      const fieldSource = g.spawnEnemy('elite', 430, 310);
+      const chainOther = g.spawnEnemy('chaser', 560, 310);
+      for (const e of [fieldSource, chainOther]) { e.spawnT = 0; e.hp = e.maxHp = 9999; }
+      const chainOtherHp = chainOther.hp;
+      g.castChainLightning([{ t: fieldSource }], 1);
+      step(12);
+      assert(chainOther.hp < chainOtherHp, '链雷没有传播到本次未锁定敌人');
+      assert(G.FX.bolts.items.some(b => b._live && b.w >= 6 && b.maxLife >= 0.4),
+        '链雷电弧没有加粗或延长显示时间');
+
+      g.enemies = []; g.delayed = []; g.dash = null;
+      const pursuitLocked = g.spawnEnemy('elite', g.player.x - 80, g.player.y);
+      const pursuitOther = g.spawnEnemy('chaser', g.player.x + 90, g.player.y);
+      for (const e of [pursuitLocked, pursuitOther]) { e.spawnT = 0; e.hp = e.maxHp = 9999; }
+      const pursuitOtherHp = pursuitOther.hp;
+      g.castPursuit([{ t: pursuitLocked }], 1);
+      step(12);
+      assert(pursuitOther.hp < pursuitOtherHp, '追符没有追击本次未锁定敌人');
+
+      g.enemies = []; g.delayed = []; g.dash = null;
+      const scatterLocked = g.spawnEnemy('elite', 430, 360);
+      const scatterOther = g.spawnEnemy('chaser', 650, 360);
+      const scatterNear = g.spawnEnemy('chaser', 690, 360);
+      for (const e of [scatterLocked, scatterOther, scatterNear]) { e.spawnT = 0; e.hp = e.maxHp = 9999; }
+      const scatterOtherHp = scatterOther.hp;
+      g.castScatter([{ t: scatterLocked }], 1);
+      step(15);
+      assert(scatterOther.hp < scatterOtherHp, '散华没有在未锁定敌群处绽放');
+
+      g.enemies = []; g.delayed = []; g.dash = null;
+      const starLocked = g.spawnEnemy('chaser', 430, 330);
+      const starOther = g.spawnEnemy('guardian', 650, 330);
+      for (const e of [starLocked, starOther]) { e.spawnT = 0; e.hp = e.maxHp = 9999; }
+      const starOtherHp = starOther.hp;
+      g.castStarfall([{ t: starLocked }], 1); step(20);
+      assert(starOther.hp < starOtherHp, '星坠没有轰击轨迹外的高生命敌人');
+
+      g.enemies = []; g.delayed = []; g.dash = null;
+      const severLocked = g.spawnEnemy('chaser', 430, 380);
+      const severOther = g.spawnEnemy('elite', 680, 380);
+      for (const e of [severLocked, severOther]) { e.spawnT = 0; e.hp = e.maxHp = 9999; }
+      const severOtherHp = severOther.hp;
+      g.castSeverance([{ t: severLocked }], 1); step(12);
+      assert(severOther.hp < severOtherHp, '断魂没有追斩轨迹外的高生命敌人');
+
+      g.enemies = []; g.delayed = [];
+      const tideLocked = g.spawnEnemy('chaser', 430, 430);
+      const tideOther = g.spawnEnemy('chaser', 790, 430);
+      for (const e of [tideLocked, tideOther]) { e.spawnT = 0; e.hp = e.maxHp = 9999; }
+      g.dash = { pts:[{x:500,y:430},{x:800,y:430}], cum:[0,300], L:300, hits:[], weaponDmgMul:1 };
+      const tideOtherHp = tideOther.hp;
+      g.castTide([{ t: tideLocked }], 1); step(12);
+      assert(tideOther.hp < tideOtherHp && Math.abs(tideOther.kx) + Math.abs(tideOther.ky) > 0,
+        '灵潮没有伤害并牵引终点附近的场外敌人');
+
+      g.enemies = []; g.delayed = [];
+      const flameTarget = g.spawnEnemy('chaser', g.player.x + 24, g.player.y);
+      const frostTarget = g.spawnEnemy('chaser', g.player.x + 180, g.player.y);
+      const galeTarget = g.spawnEnemy('chaser', g.player.x - 180, g.player.y);
+      const moonTarget = g.spawnEnemy('elite', g.player.x, g.player.y - 180);
+      for (const e of [flameTarget, frostTarget, galeTarget, moonTarget]) e.hp = e.maxHp = 9999;
+      const beforeSkillHp = [flameTarget.hp, frostTarget.hp, galeTarget.hp, moonTarget.hp];
+      g.dash = null;
+      g.castFlame(1);
+      g.castFrost([{ t: frostTarget }], 1);
+      g.dash = {
+        pts: [{ x: galeTarget.x - 140, y: galeTarget.y - 40 }, { x: galeTarget.x, y: galeTarget.y },
+          { x: galeTarget.x + 160, y: galeTarget.y + 60 }],
+        cum: [0, 146, 316], L: 316, hits: [{ t: galeTarget, ang: 0.34 }], weaponDmgMul: 1
+      };
+      g.castGale([{ t: galeTarget }], 1);
+      g.dash = null;
+      g.castMoon([{ t: moonTarget }], 1);
+      g.player.hp = g.player.maxHp - 20;
+      g.player.mana = 0;
+      g.castRenewal([], 3, 1);
+      assert(g.player.hp > g.player.maxHp - 20 && g.player.mana > 0, '生玉回复没有生效');
+      step(30);
+      assert(flameTarget.hp < beforeSkillHp[0], '天火伤害没有生效');
+      assert(frostTarget.hp < beforeSkillHp[1] && frostTarget.freezeT > 0, '霜华冻结没有生效');
+      assert(galeTarget.hp < beforeSkillHp[2], '风刃伤害没有生效');
+      assert(moonTarget.hp < beforeSkillHp[3], '月华伤害没有生效');
+      const skillVisualKinds = new Set(G.FX.skillFx.items.filter(x => x._live).map(x => x.kind));
+      assert(['flame', 'frost', 'gale', 'moon', 'renewal'].every(id => skillVisualKinds.has(id)),
+        '五种非雷击技能没有生成独立主特效');
+      assert(document.querySelectorAll('#skillWrap .skBadge').length >= 12, '技能 HUD 没有显示完整');
+      g.draw(ctx);
+      log.push('[10] 十二技能通过 落雷同帧=' + (g.delayed.length === 0) + ' 顿帧=' + thunderPaused +
+        ' 独立特效=' + skillVisualKinds.size + ' HUD=' + document.querySelectorAll('#skillWrap .skBadge').length);
+
+      // 十二种技能 Lv.3 神通质变与跨系统联动
+      const skillLv1 = { ...g.skills };
+      g.skills = Object.fromEntries(G.SKILL_ORDER.map(id => [id, 3]));
+      assert(G.SKILL_ORDER.every(id => !!G.SKILLS[id].ascension), '十二技能神通说明不完整');
+      g.enemies = []; g.delayed = []; g.zones = []; g.spawnT = 999; g._skBadge = '';
+
+      const thunderMain = g.spawnEnemy('elite', 520, 610);
+      const thunderArc = g.spawnEnemy('chaser', 820, 610);
+      for (const e of [thunderMain, thunderArc]) { e.spawnT = 0; e.pinned = true; e.hp = e.maxHp = 9999; }
+      thunderMain.freezeT = 2;
+      const thunderMainHp = thunderMain.hp, thunderArcHp = thunderArc.hp;
+      const thunderBase = g.player.stats.dmg * g.permDmg * G.SKILLS.thunder.dmgMul[2];
+      g.castThunder([{ t: thunderMain }], 3);
+      step(10);
+      assert(thunderArc.hp === thunderArcHp && thunderMainHp - thunderMain.hp > thunderBase,
+        '落雷天罚没有二次轰击原目标，或错误传播到了场外目标');
+
+      g.enemies = []; g.delayed = [];
+      const chainMain3 = g.spawnEnemy('elite', 410, 280);
+      const chainOther3 = g.spawnEnemy('chaser', 650, 280);
+      for (const e of [chainMain3, chainOther3]) { e.spawnT = 0; e.hp = e.maxHp = 9999; }
+      const chainOtherHp3 = chainOther3.hp;
+      g.castChainLightning([{ t: chainMain3 }], 3); step(14);
+      assert(chainOther3.hp < chainOtherHp3, '链雷神通没有以升级后的范围传播');
+
+      g.enemies = []; g.delayed = []; g.dash = null;
+      const pursuitMain3 = g.spawnEnemy('elite', 420, 340);
+      const pursuitOther3 = g.spawnEnemy('chaser', g.player.x + 100, g.player.y);
+      for (const e of [pursuitMain3, pursuitOther3]) { e.spawnT = 0; e.hp = e.maxHp = 9999; }
+      const pursuitOtherHp3 = pursuitOther3.hp;
+      g.castPursuit([{ t: pursuitMain3 }], 3); step(14);
+      assert(pursuitOther3.hp < pursuitOtherHp3, '追符神通没有伤害场外目标');
+
+      g.enemies = []; g.delayed = [];
+      const scatterMain3 = g.spawnEnemy('elite', 420, 390);
+      const scatterOther3 = g.spawnEnemy('chaser', 690, 390);
+      for (const e of [scatterMain3, scatterOther3]) { e.spawnT = 0; e.hp = e.maxHp = 9999; }
+      const scatterOtherHp3 = scatterOther3.hp;
+      g.castScatter([{ t: scatterMain3 }], 3); step(20);
+      assert(scatterOther3.hp < scatterOtherHp3, '散华神通没有伤害场外目标');
+
+      g.enemies = []; g.delayed = []; g.zones = [];
+      const flameTarget3 = g.spawnEnemy('elite', g.player.x, g.player.y); flameTarget3.spawnT = 0;
+      flameTarget3.hp = flameTarget3.maxHp = 9999;
+      g.dash = null; g.castFlame(3); step(10);
+      assert(g.zones.some(z => z.kind === 'flame' && z.life > 3.7), '天火神通没有留下焦土地形');
+      g.zones = [];
+
+      g.enemies = []; g.delayed = [];
+      const frostMain3 = g.spawnEnemy('elite', 620, 350);
+      const frostNear3 = g.spawnEnemy('chaser', 670, 350);
+      for (const e of [frostMain3, frostNear3]) { e.spawnT = 0; e.pinned = true; e.hp = e.maxHp = 9999; }
+      const frostNearHp = frostNear3.hp;
+      g.castFrost([{ t: frostMain3 }], 3); step(8);
+      assert(frostMain3.vulnT > 0, '霜华神通没有施加冰封易伤');
+      step(220);
+      assert(frostNear3.hp < frostNearHp, '霜华神通冰葬没有波及附近敌人');
+
+      g.enemies = []; g.delayed = [];
+      const galeMain3 = g.spawnEnemy('elite', 700, 420);
+      galeMain3.spawnT = 0; galeMain3.pinned = true; galeMain3.hp = galeMain3.maxHp = 9999;
+      const galeHp3 = galeMain3.hp;
+      g.dash = {
+        pts: [{x:420,y:300},{x:620,y:300},{x:620,y:480},{x:850,y:480}],
+        cum: [0,200,380,610], L: 610, hits: [{ t: galeMain3, ang: 0 }], weaponDmgMul: 1
+      };
+      const galeBase3 = g.player.stats.dmg * g.permDmg * G.SKILLS.gale.dmgMul[2];
+      g.castGale([{ t: galeMain3 }], 3); step(25);
+      assert(galeHp3 - galeMain3.hp > galeBase3, '风刃神通没有沿逆轨发动返岚');
+
+      g.enemies = []; g.delayed = []; g.dash = null;
+      const moonMain3 = g.spawnEnemy('elite', 760, 360);
+      const moonLine3 = g.spawnEnemy('chaser', 850, 280);
+      for (const e of [moonMain3, moonLine3]) { e.spawnT = 0; e.pinned = true; e.hp = e.maxHp = 9999; }
+      const moonLineHp = moonLine3.hp;
+      g.castMoon([{ t: moonMain3 }, { t: moonMain3 }, { t: moonMain3 }], 3); step(14);
+      assert(moonLine3.hp < moonLineHp, '月华神通满月斩线没有贯穿附近敌人');
+
+      g.enemies = []; g.delayed = [];
+      g.player.hp = g.player.maxHp;
+      g.renewalShield = 0;
+      g.castRenewal([], 4, 3);
+      const renewalBefore = g.renewalShield, renewalHp = g.player.hp;
+      g.paperShield = 0; g.mirrorShield = 0; g.player.iTime = 0; g.player.state = 'move';
+      g.hurtPlayer(Math.min(10, renewalBefore), g.player.x + 20, g.player.y);
+      assert(renewalBefore > 0 && g.renewalShield < renewalBefore && g.player.hp === renewalHp,
+        '生玉神通没有生成或消耗轮回护盾');
+      g.refreshHud();
+      assert(document.querySelectorAll('#skillWrap .skBadge.ascended').length === 12 &&
+        document.querySelectorAll('#skillWrap .skBadge.renewal').length === 1,
+        '神通与生玉护盾 HUD 没有正确显示');
+      log.push('[10a] 十二神通通过 天罚/雷网/百羽/万华/天穹/彼岸路/归海/焦土/冰葬/返岚/满月/轮回 HUD=12');
+      g.skills = skillLv1; g.renewalShield = 0; g._skBadge = ''; g.spawnT = 0;
+      g.enemies = []; g.delayed = []; g.zones = []; g.player.iTime = 1; g.refreshHud();
+
+      // 默认御神刀保持完整轨迹，六把额外武器拥有独立解析与伤害机制
+      g.enemies = []; g.delayed = []; g.chainPull = null; g.dash = null; g.player.state = 'move';
+      g.weapons = ['ritualBlade', 'naginata']; g.activeWeaponIndex = 1;
+      g.trail = [{x:400,y:500},{x:520,y:260},{x:840,y:380}];
+      g.trailCum = [0, 268, 610]; g.trailLen = 610;
+      const naginataPath = g.weaponPathData();
+      naginataPath.gestureData = { L: g.trailLen };
+      g.executeDash([], naginataPath, G.WEAPONS.naginata);
+      const curvedNaginataDmg = g.dash.weaponDmgMul;
+      const straightNaginataPath = {
+        pts: [{x:400,y:650},{x:900,y:650}], cum: [0,500], L: 500, weapon: 'naginata',
+        gestureData: { L: 500 }
+      };
+      g.executeDash([], straightNaginataPath, G.WEAPONS.naginata);
+      const straightNaginataDmg = g.dash.weaponDmgMul;
+      assert(naginataPath.pts.length === 2 && g.activeWeapon().lockWidthMul > 1 &&
+        straightNaginataDmg > curvedNaginataDmg,
+        '破阵薙刀没有转为宽幅直线路径，或笔直绘制没有提高冲阵伤害');
+
+      g.weapons[1] = 'bow'; g.activeWeaponIndex = 1;
+      const bowPath = g.weaponPathData();
+      assert(bowPath.pts.length === 3 && !g.activeWeapon().movePlayer, '梓弓没有保留完整轨迹');
+      const bowTarget = g.spawnEnemy('chaser', 840, 650); bowTarget.spawnT = 0; bowTarget.hp = bowTarget.maxHp = 9999;
+      const bowHp = bowTarget.hp;
+      g.explodeBowEnd(840, 650);
+      assert(bowTarget.hp < bowHp, '梓弓末端爆炸没有伤害');
+      g.enemies = []; g.delayed = []; g.dash = null; g.player.state = 'move';
+      const bowPierce = g.spawnEnemy('chaser', 620, 650);
+      bowPierce.spawnT = 0; bowPierce.hp = bowPierce.maxHp = 9999;
+      const bowPierceHp = bowPierce.hp;
+      const bowLine = { pts:[{x:400,y:650},{x:840,y:650}], cum:[0,440], L:440, weapon:'bow' };
+      g.executeDash([], bowLine, G.WEAPONS.bow);
+      for (let i = 0; i < 40 && g.player.state === 'dash'; i++) g.updateDash(1 / 60);
+      assert(bowPierce.hp < bowPierceHp, '梓弓箭矢没有沿轨迹贯穿未锁定敌人');
+
+      g.enemies = [];
+      g.weapons[1] = 'kusarigama';
+      const openTarget = g.spawnEnemy('chaser', 650, 650);
+      openTarget.spawnT = 0; openTarget.hp = openTarget.maxHp = 9999;
+      const openHp = openTarget.hp;
+      const openData = {
+        pts:[{x:420,y:650},{x:860,y:650}], cum:[0,440], L:440, weapon:'kusarigama',
+        locks:[], lockedTargets:new Set()
+      };
+      g.slashOpenChain(openData);
+      assert(openTarget.hp < openHp, '锁镰开放轨迹没有沿线割魂');
+      g.enemies = [];
+      const closedPts = [{x:480,y:540},{x:800,y:540},{x:800,y:820},{x:480,y:820},{x:490,y:550}];
+      const closedData = { pts: closedPts, cum: [0,320,580,900,1210], L: 1210, weapon: 'kusarigama' };
+      assert(g.isClosedPath(closedData, G.WEAPONS.kusarigama), '锁镰闭合轨迹识别失败');
+      const chainTarget = g.spawnEnemy('elite', 640, 650); chainTarget.spawnT = 0; chainTarget.hp = chainTarget.maxHp = 9999;
+      const chainHp = chainTarget.hp;
+      g.startChainPull(closedData);
+      for (let i = 0; i < 30 && g.chainPull; i++) g.updateChainPull(1 / 60);
+      assert(chainTarget.hp < chainHp, '锁镰收紧没有伤害');
+
+      g.enemies = []; g.chainPull = null;
+      g.weapons[1] = 'odachi';
+      const odachiTarget = g.spawnEnemy('elite', 640, 650); odachiTarget.spawnT = 0; odachiTarget.hp = odachiTarget.maxHp = 9999;
+      const odachiHp = odachiTarget.hp;
+      const odachiPath = { pts: [{x:360,y:650},{x:900,y:650}], cum: [0,540], L: 540, weapon: 'odachi' };
+      g.trailFade = { pts: odachiPath.pts, t: 1, weapon: 'odachi' };
+      g.executeOdachi([{ t: odachiTarget, s: 280 }], odachiPath, G.WEAPONS.odachi);
+      step(55);
+      assert(odachiTarget.hp < odachiHp, '大太刀同时断线没有伤害');
+
+      g.enemies = []; g.delayed = []; g.dash = null; g.player.state = 'move';
+      g.weapons[1] = 'gohei';
+      const goheiTarget = g.spawnEnemy('guardian', 680, 650);
+      goheiTarget.spawnT = 0; goheiTarget.hp = goheiTarget.maxHp = 9999;
+      const goheiHp = goheiTarget.hp;
+      g.invokeGohei(640, 650);
+      assert(goheiTarget.hp < goheiHp && goheiTarget.vulnT > 0 &&
+        Math.abs(goheiTarget.kx) + Math.abs(goheiTarget.ky) > 0,
+        '御币招魂阵没有聚怪、伤害或施加易伤');
+
+      g.enemies = []; g.delayed = []; g.dash = null; g.player.state = 'move';
+      g.weapons[1] = 'fans';
+      const fanTarget = g.spawnEnemy('elite', 650, 650);
+      fanTarget.spawnT = 0; fanTarget.hp = fanTarget.maxHp = 9999;
+      const fanPath = { pts:[{x:420,y:650},{x:820,y:650}], cum:[0,400], L:400, weapon:'fans' };
+      g.executeWeapon([{t:fanTarget,s:200,repeat:0}], fanPath);
+      const fanFirstDmg = g.calcDmg(fanTarget, 0, {t:fanTarget,repeat:0});
+      const fanEchoDmg = g.calcDmg(fanTarget, 1, {t:fanTarget,repeat:1,fanEcho:true});
+      assert(g.dash.locks.length === 2 && g.dash.locks[1].repeat === 1 &&
+        g.dash.weaponDmgMul === G.WEAPONS.fans.damageMul && fanEchoDmg > fanFirstDmg * 1.4 &&
+        G.WEAPONS.odachi.costMul > G.WEAPONS.naginata.costMul &&
+        G.WEAPONS.fans.costMul < G.WEAPONS.ritualBlade.costMul && G.WEAPON_ORDER.length === 6,
+        '双扇连续两击、第二击增幅、武器消耗差异或六把额外武器池不完整');
+      g.weapons = ['ritualBlade']; g.activeWeaponIndex = 0; g._weaponHud = '';
+      g.enemies = []; g.delayed = []; g.chainPull = null; g.weaponTelegraph = null; g.dash = null;
+      g.player.state = 'move'; g.trail = []; g.trailCum = []; g.trailLen = 0;
+      log.push('[10b] 武器通过 default=' + g.activeWeapon().id +
+        ' 薙刀直线倍率/弓沿线贯穿/锁镰开放与闭环/大太刀断线/御币聚怪/双扇强返扫');
+
+      // 轨迹术式、神兵专精与四类战场划线互动。
+      const makeTrajectory = pts => {
+        const cum = [0];
+        for (let i = 1; i < pts.length; i++)
+          cum.push(cum[i - 1] + G.util.dist(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y));
+        return { pts, cum, L: cum[cum.length - 1], weapon: 'ritualBlade' };
+      };
+      const circlePts = [];
+      for (let i = 0; i <= 28; i++) {
+        const a = i / 28 * Math.PI * 2;
+        circlePts.push({ x: 650 + Math.cos(a) * 150, y: 690 + Math.sin(a) * 115 });
+      }
+      const knotPts = [
+        {x:430,y:570},{x:870,y:810},{x:430,y:810},{x:870,y:570}
+      ];
+      const spiralPts = [];
+      for (let i = 0; i <= 24; i++) {
+        const a = i * 0.53, r = 28 + i * 6.5;
+        spiralPts.push({ x: 650 + Math.cos(a) * r, y: 690 + Math.sin(a) * r });
+      }
+      const formPaths = {
+        line: makeTrajectory([{x:390,y:660},{x:910,y:660}]),
+        loop: makeTrajectory(circlePts),
+        knot: makeTrajectory(knotPts),
+        retrace: makeTrajectory([{x:390,y:600},{x:850,y:600},{x:390,y:600}]),
+        spiral: makeTrajectory(spiralPts),
+        zigzag: makeTrajectory([
+          {x:390,y:580},{x:510,y:755},{x:630,y:580},
+          {x:750,y:755},{x:870,y:580},{x:990,y:755}
+        ])
+      };
+      const formResults = Object.fromEntries(Object.entries(formPaths).map(([id, path]) => {
+        const found = g.analyzeTrajectory(path);
+        return [id, found.id + ':' + found.ready];
+      }));
+      assert(Object.keys(G.TRAJECTORY_FORMS).length === 6 &&
+        Object.entries(formResults).every(([id, value]) => value === id + ':true'),
+        '六种轨迹术式识别失败：' + JSON.stringify(formResults));
+      assert(g.trajectoryFormPower('naginata', 'line') > 1.7 &&
+        g.trajectoryFormPower('kusarigama', 'loop') > 1.7 &&
+        g.trajectoryFormPower('odachi', 'knot') > 1.7 &&
+        g.trajectoryFormPower('gohei', 'spiral') > 1.6 &&
+        g.trajectoryFormPower('fans', 'retrace') > 1.6 &&
+        g.trajectoryFormPower('bow', 'zigzag') > 1.6,
+        '六把神兵没有载入各自的轨迹术式专精');
+
+      // 五套构筑：点数、抽取倾向与四种大成实战共鸣。
+      const buildProbe = (weapons, skills, owned, shopRelics, activeSkillId) => ({
+        weapons, skills: skills || {}, owned: owned || {}, shopRelics: shopRelics || {},
+        activeSkillId: activeSkillId || 'dodge'
+      });
+      const buildProbes = {
+        sever: buildProbe(['naginata'], {gale:1}, {longdrive:1}),
+        repeat: buildProbe(['fans'], {moon:1}, {retrace:1}),
+        storm: buildProbe([], {thunder:2,chainLightning:2}, {}),
+        ward: buildProbe(['kusarigama'], {tide:1}, {zone:1}),
+        familiar: buildProbe(['bow'], {pursuit:1}, {fox:1})
+      };
+      assert(G.BUILD_ORDER.length === 5 && G.BUILD_ORDER.every(id =>
+        G.getBuildState(buildProbes[id])[id].score === 4 &&
+        G.getBuildState(buildProbes[id])[id].tier === 1),
+        '五套流派没有在四点时进入初成共鸣');
+      const severBuild = buildProbe(['naginata'], {gale:2}, {longdrive:2,first:2});
+      assert(G.getBuildState(severBuild).sever.tier === 2 &&
+        G.rollUpgrades(severBuild.owned, severBuild).some(u =>
+          G.BUILD_ARCHETYPES.sever.upgrades.includes(u.id)) &&
+        G.shopBuildWeight(severBuild, G.SHOP_RELIC_MAP.naginataPennant) >
+          G.shopBuildWeight(severBuild, G.SHOP_RELIC_MAP.wealthCoin),
+        '流派八点大成、升级保底或商店倾向没有生效');
+      const nearSever = buildProbe(['naginata'], {gale:1}, {});
+      const severForecast = G.buildChoiceLabel(nearSever, 'upgrades', 'longdrive');
+      assert(severForecast.includes('3') === false && severForecast.includes('初成') &&
+        G.getBuildChoiceForecast(nearSever, 'upgrades', 'longdrive')[0].after === 4,
+        '升级选择没有预告共鸣将跨入初成');
+      const savedPendingNotices = g._pendingBuildNotices;
+      g._pendingBuildNotices = [];
+      g._buildAnnounceReady = true;
+      g.queueBuildTierNotices(
+        {sever:{tier:0}},
+        {sever:{tier:1,def:G.BUILD_ARCHETYPES.sever}}
+      );
+      const awakeningNotice = g.consumeBuildNotice();
+      assert(awakeningNotice.includes('断界・一闪') && awakeningNotice.includes('初 成'),
+        '共鸣跨越四点时没有生成初成反馈');
+      g._pendingBuildNotices = savedPendingNotices;
+
+      const savedBuildProbe = {
+        buildState: g.buildState, enemies: g.enemies, delayed: g.delayed, zones: g.zones,
+        foxfires: g.foxfires, dash: g.dash, stats: g.player.stats
+      };
+      const blankBuildState = () => G.getBuildState(buildProbe([], {}, {}));
+      g.player.stats = G.computeStats({});
+      g.boss = null;
+
+      g.buildState = blankBuildState(); g.buildState.sever.tier = 2;
+      g.buildState.sever.score = 8; g._buildHud = ''; g.renderBuildHud();
+      assert(document.getElementById('buildHud').textContent.includes('大成'),
+        'HUD 没有显示已激活的大成共鸣');
+      g.enemies = []; g.delayed = []; g.zones = []; g.foxfires = [];
+      const severTarget = g.spawnEnemy('elite', 650, 660);
+      severTarget.spawnT = 0; severTarget.hp = severTarget.maxHp = 9999;
+      const severHp = severTarget.hp, lineForm = g.analyzeTrajectory(formPaths.line);
+      g.dash = Object.assign({}, formPaths.line, {
+        hits: [], pathData: Object.assign({}, formPaths.line, {form:lineForm})
+      });
+      g.triggerBuildResonances([], 0, 0);
+      assert(g.delayed.length > 0, '断界大成没有排入整线余斩');
+      g.delayed.shift().fn();
+      assert(severTarget.hp < severHp, '断界余斩没有伤害轨迹沿线敌人');
+
+      g.buildState = blankBuildState(); g.buildState.repeat.tier = 2;
+      g.enemies = []; g.delayed = [];
+      const repeatBuildTarget = g.spawnEnemy('elite', 650, 600);
+      repeatBuildTarget.spawnT = 0; repeatBuildTarget.hp = repeatBuildTarget.maxHp = 9999;
+      const repeatForm = g.analyzeTrajectory(formPaths.retrace);
+      g.dash = Object.assign({}, formPaths.retrace, {
+        hits: [], pathData: Object.assign({}, formPaths.retrace, {form:repeatForm})
+      });
+      g.triggerBuildResonances([
+        {t:repeatBuildTarget},{t:repeatBuildTarget},{t:repeatBuildTarget}
+      ], 3, 0);
+      assert(g.delayed.length === 1, '返祓大成没有按三次命中生成返祓残刃');
+
+      g.buildState = blankBuildState(); g.buildState.ward.tier = 2;
+      g.enemies = []; g.delayed = []; g.zones = [];
+      const wardTarget = g.spawnEnemy('chaser', 860, 690);
+      wardTarget.spawnT = 0;
+      const loopForm = g.analyzeTrajectory(formPaths.loop);
+      g.dash = Object.assign({}, formPaths.loop, {
+        hits: [], pathData: Object.assign({}, formPaths.loop, {form:loopForm})
+      });
+      g.triggerBuildResonances([], 0, 0);
+      assert(g.zones.length === 1 && Math.abs(wardTarget.kx) + Math.abs(wardTarget.ky) > 0,
+        '封界大成没有生成聚怪净域');
+
+      g.buildState = blankBuildState(); g.buildState.familiar.tier = 2;
+      g.enemies = []; g.delayed = []; g.foxfires = [];
+      const familiarHits = [500,650,800].map(x => {
+        const e = g.spawnEnemy('chaser', x, 660); e.spawnT = 0; return {t:e};
+      });
+      g.dash = Object.assign({}, formPaths.line, {
+        hits: familiarHits, pathData: Object.assign({}, formPaths.line, {form:lineForm})
+      });
+      g.triggerBuildResonances(familiarHits, 3, 0);
+      assert(g.foxfires.length === 1, '御札大成没有放出追命式神');
+
+      g.buildState = savedBuildProbe.buildState; g.enemies = savedBuildProbe.enemies;
+      g.delayed = savedBuildProbe.delayed; g.zones = savedBuildProbe.zones;
+      g.foxfires = savedBuildProbe.foxfires; g.dash = savedBuildProbe.dash;
+      g.player.stats = savedBuildProbe.stats;
+      log.push('[10h] 流派通过 五系点数/选择预告/成型反馈/初成大成/抽取倾向/余斩/返刃/净域/式神');
+
+      g.enemies = []; g.bullets = []; g.soulLinks = []; g.spiritNodes = []; g.bossCurses = [];
+      const linkedA = g.spawnEnemy('chaser', 500, 650);
+      const linkedB = g.spawnEnemy('guardian', 760, 650);
+      for (const e of [linkedA, linkedB]) { e.spawnT = 0; e.hp = e.maxHp = 9999; e.pinned = true; }
+      const redLink = g.createSoulLink(linkedA, linkedB), linkedHp = linkedA.hp, linkedShell = linkedB.shell;
+      g.hurtEnemy(linkedA, 500, { ang: 0 });
+      linkedB.hurt(500, g, { ang: linkedB.guardAng });
+      assert(linkedA.hp === linkedHp && linkedB.shell === linkedShell && redLink.active,
+        '红线共生状态没有让双方完全无敌');
+      const cutPath = makeTrajectory([{x:630,y:500},{x:630,y:800}]);
+      const cutResult = g.resolveTrajectoryInteractions(cutPath, g.analyzeTrajectory(cutPath));
+      g.hurtEnemy(linkedA, 100, { ang: 0 });
+      assert(cutResult.cutLinks === 1 && !redLink.active && linkedA.hp < linkedHp &&
+        linkedA.vulnT > 0 && linkedB.vulnT > 0,
+        '轨迹没有斩断红线并解除共生无敌');
+
+      const armorAligned = new G.Guardian(500, 500, 1);
+      const armorWrong = new G.Guardian(600, 500, 1);
+      for (const e of [armorAligned, armorWrong]) { e.spawnT = 0; e.hp = e.maxHp = 9999; e.guardAng = 0; }
+      armorAligned.hurt(100, g, { ang: 0 });
+      armorWrong.hurt(100, g, { ang: Math.PI / 2 });
+      assert(9999 - armorAligned.hp > (9999 - armorWrong.hp) * 3,
+        '石灯守的顺势破甲没有明显强于错向攻击');
+
+      g.enemies = []; g.soulLinks = [];
+      const savedSpiritRandom = Math.random;
+      Math.random = () => 0;
+      const lowSpiritCount = g.rollSpiritNodeCount(20);
+      Math.random = () => 0.999999;
+      const highSpiritCount = g.rollSpiritNodeCount(20);
+      Math.random = savedSpiritRandom;
+      assert(lowSpiritCount === 3 && highSpiritCount === 9,
+        '灵脉连祷没有在三至九点之间随机生成');
+
+      const starNodes = g.buildSpiritNodePattern(9, 650, 520, 76, 0);
+      const starPath = makeTrajectory(starNodes.map(node => ({x:node.x,y:node.y})));
+      let starCrosses = 0;
+      for (let i = 0; i < starNodes.length - 1; i++) {
+        for (let j = i + 2; j < starNodes.length - 1; j++) {
+          if (g.segmentIntersection(starNodes[i], starNodes[i + 1],
+            starNodes[j], starNodes[j + 1])) starCrosses++;
+        }
+      }
+      g.spiritNodes = starNodes;
+      g.spiritTrial = {count:9,reward:'jade',trailBonus:2.52,skillChance:1};
+      const boostedTrailLimit = g.trailLimit();
+      const jadeBeforePrayer = g.jade, pickupBeforePrayer = g.pickups.length;
+      const nodeResult = g.resolveTrajectoryInteractions(starPath, g.analyzeTrajectory(starPath));
+      assert(starCrosses > 0 && boostedTrailLimit > g.player.stats.trailLen * 2 &&
+        nodeResult.blessing > 1 && g.jade > jadeBeforePrayer &&
+        g.pickups.length === pickupBeforePrayer + 1 &&
+        g.pickups[g.pickups.length - 1].kind === 'skill' && g.spiritNodes.length === 0,
+        '九点连祷没有形成交叉轨迹、放宽绘制长度、提高奖励或掉落技能卷轴');
+
+      g.spiritNodes = g.buildSpiritNodePattern(6, 650, 520, 70, 0);
+      g.spiritTrial = {count:6,reward:'power',trailBonus:1.86,skillChance:0};
+      const failedPrayer = makeTrajectory([{x:300,y:250},{x:360,y:250}]);
+      const failedResult = g.resolveSpiritSequence(failedPrayer);
+      assert(failedResult.attempted && !failedResult.complete && g.spiritNodes.length === 0 &&
+        g.spiritTrial === null && G.SPIRIT_REWARD_ORDER.length === 5,
+        '未在一笔内完成连祷时，节点没有整组消失或五类奖励未载入');
+
+      g.spiritNodes = []; g.bullets = [new G.Bullet(630, 650, 0, 0, 10)];
+      g.player.mana = 0;
+      const bulletResult = g.resolveTrajectoryInteractions(cutPath, g.analyzeTrajectory(cutPath));
+      assert(bulletResult.cutBullets === 1 && g.bullets[0].dead && g.player.mana > 0,
+        '完整绘制轨迹没有切开沿途咒弹');
+
+      g.boss = new G.Boss(1, 1, 1); g.boss.spawnT = 0;
+      const curse = {
+        kind:'cut', x:630, y:650, a:{x:500,y:650}, b:{x:760,y:650},
+        r:58, t:6, maxT:6, dead:false
+      };
+      g.bossCurses = [curse];
+      g.resolveTrajectoryInteractions(cutPath, g.analyzeTrajectory(cutPath));
+      assert(curse.dead && g.boss.staggerT >= 0.9 && g.boss.vulnT >= 2.4 &&
+        [1,2,3,4].map(tier => new G.Boss(1, 1, tier)).every(b => b.attackPool.includes('curse')),
+        'Boss 轨迹咒式没有被逆解，或咒式未进入全部 Boss 招式池');
+      g.boss = null; g.bossCurses = []; g.bullets = []; g.spiritNodes = [];
+      g.enemies = []; g.player.mana = g.player.maxMana;
+      log.push('[10g] 轨迹系统通过 六术式/六专精/红线无敌/顺势破甲/3～9点连祷/交叉星轨/五奖励/一笔失败消失/断弹/Boss咒式');
+
+      // 正式珍品：轨迹转折、自交、闭环、重复增伤、咒物与 HUD
+      const oldRelics = g.shopRelics;
+      g.shopRelics = {
+        turnCrane: 1, crossMirror: 1, closedRope: 1, startBell: 1, endSeal: 1,
+        shortTalisman: 1, armorAwl: 1, spiritShuttle: 1, shuraMask: 1
+      };
+      g.rebuildStats();
+      const makePath = pts => {
+        const cum = [0];
+        for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + G.util.dist(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y));
+        return { pts, cum, L: cum[cum.length - 1], weapon: 'ritualBlade' };
+      };
+      const turnData = makePath([{x:420,y:320},{x:680,y:320},{x:680,y:560},{x:900,y:560}]);
+      const crossData = makePath([{x:430,y:300},{x:850,y:600},{x:430,y:600},{x:850,y:300}]);
+      const loopData = makePath([{x:470,y:280},{x:810,y:280},{x:810,y:520},{x:470,y:520},{x:478,y:288}]);
+      assert(g.pathItemAnalysis(turnData).turns.length >= 2, '折锋纸鹤没有识别明显转折');
+      assert(g.pathItemAnalysis(crossData).crosses.length >= 1, '交错古镜没有识别轨迹自交');
+      assert(g.pathItemAnalysis(loopData).closed, '封界注连绳没有识别闭合轨迹');
+      assert(g.preparePathItemEvents(crossData).some(x => x.type === 'cross') && g.pathItemsCanAttack(crossData),
+        '轨迹珍品没有进入沿线触发队列');
+      const itemTarget = g.spawnEnemy('chaser', 640, 450); itemTarget.spawnT = 0; itemTarget.hp = itemTarget.maxHp = 9999;
+      const itemHp = itemTarget.hp;
+      g.activatePathItemEvent({ type: 'cross', x: 640, y: 450, s: 300, ang: 0 });
+      assert(itemTarget.hp < itemHp, '交错古镜爆炸没有造成伤害');
+      g.dash = { hits: [{ t: itemTarget }], weaponDmgMul: 1, L: 220 };
+      const repeatBase = g.calcDmg(itemTarget, 0, { t: itemTarget, repeat: 0 });
+      const repeatBoost = g.calcDmg(itemTarget, 0, { t: itemTarget, repeat: 2 });
+      assert(repeatBoost > repeatBase && g.player.stats.repeatHits >= 1 && g.player.stats.maxLock >= 9,
+        '破甲神锥、寸祓短册或修罗鬼面没有进入结算');
+      g._itemHud = null; g.refreshHud();
+      assert(document.querySelectorAll('#itemHudGrid .itemHudIcon').length >= 9, '战斗珍品栏没有显示持有道具');
+
+      const oldSkillsForItems = g.skills;
+      g.skills = {};
+      g.shopRelics = { sevenMagatama: 1, spiritShuttle: 1, hundredLamp: 1, soulGourd: 1 };
+      g.rebuildStats(); g.enemies = []; g.foxfires = []; g.player.mana = 0;
+      const repeatTarget = g.spawnEnemy('elite', 500, 300); repeatTarget.spawnT = 0;
+      repeatTarget.maxHp = 9999; repeatTarget.hp = 9998; // 避免满血增伤让逐次期望值产生偏差
+      const itemHits = [
+        { t: repeatTarget, s: 120, repeat: 0 },
+        { t: repeatTarget, s: 180, repeat: 1 },
+        { t: repeatTarget, s: 240, repeat: 2 }
+      ];
+      for (let i = 0; i < 7; i++) {
+        const e = g.spawnEnemy('chaser', 610 + i * 28, 500); e.spawnT = 0; e.hp = 1;
+        itemHits.push({ t: e, s: 280 + i * 42, repeat: 0 });
+      }
+      g.dash = {
+        pts: [{x:420,y:400},{x:900,y:400}], cum: [0,480], L: 480, weapon: 'ritualBlade',
+        movePlayer: true, weaponDmgMul: 1, hits: itemHits
+      };
+      const expectedRepeatMain = itemHits.slice(0, 3).reduce((sum, h, i) => sum + g.calcDmg(h.t, i, h), 0);
+      const repeatHpBefore = repeatTarget.hp;
+      g.purify();
+      log.push('[10c-detail] extra=' + ((repeatHpBefore - repeatTarget.hp) - expectedRepeatMain).toFixed(2) +
+        ' fox=' + g.foxfires.length + ' mana=' + g.player.mana.toFixed(1) +
+        ' pull=' + (Math.abs(repeatTarget.kx) + Math.abs(repeatTarget.ky)).toFixed(1));
+      assert(repeatHpBefore - repeatTarget.hp > expectedRepeatMain && g.foxfires.length >= 1 &&
+        g.player.mana >= 2 && g.player.mana < 5 && Math.abs(repeatTarget.kx) + Math.abs(repeatTarget.ky) > 0,
+        '七返勾玉、回灵飞梭、百鬼行灯或收魂葫芦没有形成联动');
+      g.skills = oldSkillsForItems;
+      g.shopRelics = oldRelics; g._itemHud = null; g.rebuildStats();
+      g.enemies = []; g.dash = null; g.player.state = 'move';
+      log.push('[10c] 珍品通过 总数=' + G.SHOP_RELICS.length + ' 转折/自交/闭环/重巡/HUD');
+
+      // 第二批珍品：技能前置、武器前置、神兵强化与收尾爆炸
+      const batchSkills = g.skills, batchWeapons = g.weapons.slice(), batchWeaponIndex = g.activeWeaponIndex;
+      g.shopRelics = {}; g.skills = {}; g.weapons = ['ritualBlade']; g.activeWeaponIndex = 0;
+      assert(G.shopRelicEligible(g, G.SHOP_RELIC_MAP.ritualScabbard) &&
+        !G.shopRelicEligible(g, G.SHOP_RELIC_MAP.flameChalice) &&
+        !G.shopRelicEligible(g, G.SHOP_RELIC_MAP.bowQuiver),
+        '技能或神兵专属珍品前置筛选失败');
+      g.skills = Object.fromEntries(G.SKILL_ORDER.map(id => [id, 1]));
+      g.weapons = Object.keys(G.WEAPONS);
+      g.owned.execution = 1;
+      const batchIds = ['flameChalice','frostHairpin','galeFeather','moonMirror','renewalRosary',
+        'starBell','severanceInk','tidePearl',
+        'ritualScabbard','naginataPennant','bowQuiver','chainWeight','odachiSheath','goheiTassel','fanRibs',
+        'firstSeal','lastOrb','wardBreaker','hunterEye'];
+      assert(batchIds.every(id => G.shopRelicEligible(g, G.SHOP_RELIC_MAP[id])),
+        '新增技能、神兵或斩杀珍品没有全部进入对应构筑池');
+      g.timeScale = g.timeTarget = 1; g.hitstop = 0; g.player.state = 'move';
+
+      const orderDummy = g.spawnEnemy('elite', 400, 300); orderDummy.spawnT = 0; orderDummy.hp = orderDummy.maxHp = 9999;
+      g.shopRelics = {};
+      g.dash = { weapon: 'ritualBlade', hits: [{t:orderDummy},{t:orderDummy}], L: 400, weaponDmgMul: 1 };
+      const orderBase = g.calcDmg(orderDummy, 0, {t:orderDummy,repeat:0});
+      g.shopRelics = { firstSeal: 1, ritualScabbard: 1 };
+      const orderBoost = g.calcDmg(orderDummy, 0, {t:orderDummy,repeat:0});
+      assert(orderBoost > orderBase * 1.55, '一番御札或祝词白鞘没有强化第一斩');
+
+      g.enemies = []; g.delayed = []; g.shopRelics = { bowQuiver: 2 };
+      const bowRelicTarget = g.spawnEnemy('elite', g.player.x + 172, g.player.y);
+      bowRelicTarget.spawnT = 0; bowRelicTarget.pinned = true; bowRelicTarget.hp = bowRelicTarget.maxHp = 9999;
+      const bowRelicHp = bowRelicTarget.hp;
+      g.explodeBowEnd(g.player.x, g.player.y);
+      assert(bowRelicTarget.hp < bowRelicHp, '追星神箙没有扩大梓弓爆炸');
+
+      const looseLoop = makePath([{x:400,y:260},{x:720,y:260},{x:720,y:520},{x:400,y:520},{x:505,y:260}]);
+      g.shopRelics = {};
+      const looseBase = g.isClosedPath(looseLoop, G.WEAPONS.kusarigama);
+      g.shopRelics = { chainWeight: 1 };
+      assert(!looseBase && g.isClosedPath(looseLoop, G.WEAPONS.kusarigama), '缚魂陨铁没有放宽锁镰闭合距离');
+
+      g.enemies = []; g.delayed = []; g.shopRelics = {
+        flameChalice: 3, frostHairpin: 3, galeFeather: 3, moonMirror: 1, renewalRosary: 3
+      };
+      const flameRelicTarget = g.spawnEnemy('elite', g.player.x + 150, g.player.y);
+      flameRelicTarget.spawnT = 0; flameRelicTarget.pinned = true; flameRelicTarget.hp = flameRelicTarget.maxHp = 9999;
+      const flameRelicHp = flameRelicTarget.hp;
+      g.dash = null; g.castFlame(1); step(12);
+      assert(flameRelicTarget.hp < flameRelicHp, '迦具土酒盏没有扩大天火范围');
+
+      g.enemies = []; g.delayed = [];
+      const frostRelicTarget = g.spawnEnemy('elite', 620, 340);
+      frostRelicTarget.spawnT = 0; frostRelicTarget.pinned = true; frostRelicTarget.hp = frostRelicTarget.maxHp = 9999;
+      g.castFrost([{t:frostRelicTarget}], 1); step(6);
+      assert(frostRelicTarget.freezeT > 1.7, '六花冰簪没有延长冻结时间');
+
+      g.enemies = []; g.delayed = [];
+      const galeRelicTarget = g.spawnEnemy('elite', 680, 390);
+      galeRelicTarget.spawnT = 0; galeRelicTarget.pinned = true; galeRelicTarget.hp = galeRelicTarget.maxHp = 9999;
+      const galeRelicHp = galeRelicTarget.hp;
+      g.dash = { pts:[{x:420,y:390},{x:820,y:390}], cum:[0,400], L:400,
+        hits:[{t:galeRelicTarget,ang:0}], weapon:'ritualBlade', weaponDmgMul:1 };
+      g.castGale([{t:galeRelicTarget}], 1); step(10);
+      const galePlain = g.player.stats.dmg * g.permDmg * G.SKILLS.gale.dmgMul[0];
+      assert(galeRelicHp - galeRelicTarget.hp > galePlain * 1.45, '镰鼬尾羽没有提高风刃伤害');
+
+      g.enemies = []; g.delayed = []; g.dash = null;
+      const moonRelicA = g.spawnEnemy('elite', 720, 340), moonRelicB = g.spawnEnemy('elite', 860, 340);
+      for (const e of [moonRelicA, moonRelicB]) { e.spawnT = 0; e.pinned = true; e.hp = e.maxHp = 9999; }
+      const moonRelicBHp = moonRelicB.hp;
+      g.castMoon([{t:moonRelicA},{t:moonRelicB}], 1); step(10);
+      assert(moonRelicB.hp < moonRelicBHp, '月读残镜没有追加半月斩');
+
+      g.player.hp = g.player.maxHp; g.renewalShield = 0;
+      g.castRenewal([], 10, 3); g.castRenewal([], 10, 3);
+      g.castRenewal([], 10, 3); g.castRenewal([], 10, 3);
+      assert(g.renewalShield > 40 && g.renewalShield <= 64 && g.renewalCd === 5,
+        '常世念珠没有提高轮回护盾上限，或生玉没有进入内置冷却');
+
+      g.enemies = []; g.delayed = []; g.skills = {}; g.shopRelics = { lastOrb: 1 };
+      const lastMain = g.spawnEnemy('elite', 700, 400), lastNear = g.spawnEnemy('elite', 760, 400);
+      for (const e of [lastMain, lastNear]) { e.spawnT = 0; e.pinned = true; e.hp = e.maxHp = 9999; }
+      const lastNearHp = lastNear.hp;
+      g.dash = { pts:[{x:500,y:400},{x:800,y:400}], cum:[0,300], L:300, weapon:'ritualBlade',
+        weaponDmgMul:1, hits:[{t:lastMain,s:180,repeat:0}] };
+      g.purify();
+      assert(lastNear.hp < lastNearHp, '终祓鸣玉没有在最后一斩引爆');
+      log.push('[10e] 珍品扩展通过 技能8/神兵7/连段与通用 总数=' + G.SHOP_RELICS.length);
+
+      // 第三批珍品：连祷、轨迹轮转、换装/主动联动、狩猎补给与受击保命。
+      const thirdBatchIds = ['nineStarChart','prayerCoin','brokenRosary','sixPathWheel',
+        'twinScabbard','spellReturnGem','eightEchoBell','stillHourglass',
+        'eliteBounty','hundredLedger','scarletUmbrella','returnSoulRope'];
+      g.shopRelics = {}; g.weapons = ['ritualBlade']; g.activeWeaponIndex = 0;
+      assert(!G.shopRelicEligible(g, G.SHOP_RELIC_MAP.twinScabbard),
+        '比翼双鞘在只有一件神兵时不应进入商店');
+      g.weapons.push('bow');
+      assert(G.shopRelicEligible(g, G.SHOP_RELIC_MAP.twinScabbard) &&
+        thirdBatchIds.every(id => G.SHOP_RELIC_MAP[id] &&
+          G.relicMechanicLabel(G.SHOP_RELIC_MAP[id]).length > 0),
+        '第三批珍品没有全部载入或缺少机制分类');
+
+      g.shopRelics = { nineStarChart: 2, prayerCoin: 2 };
+      g.player.mana = 0;
+      const prayerJadeBefore = g.jade, prayerPickupsBefore = g.pickups.length;
+      g.spiritNodes = g.buildSpiritNodePattern(9, 690, 410, 116, 0.18);
+      g.spiritTrial = { count: 9, reward: 'mana', trailBonus: 2.52, skillChance: 0 };
+      const prayerPath = makePath(g.spiritNodes.map(n => ({ x: n.x, y: n.y })));
+      const savedRandom = Math.random;
+      Math.random = () => 0;
+      const prayerResult = g.resolveSpiritSequence(prayerPath);
+      Math.random = savedRandom;
+      assert(prayerResult.complete && g.player.mana >= 60 && g.jade > prayerJadeBefore &&
+        g.pickups.length > prayerPickupsBefore &&
+        g.pickups.slice(prayerPickupsBefore).some(p => p.kind === 'skill'),
+        '九曜星图或星巡小判没有强化高连祷奖励');
+
+      g.shopRelics = { brokenRosary: 2 }; g.player.mana = 0;
+      g.spiritNodes = [1, 2, 3, 4].map((order, i) => ({
+        x: 500 + i * 120, y: 560, r: 14, hitPad: 8, order, completed: false, pulse: 0
+      }));
+      g.spiritTrial = { count: 4, reward: 'power', trailBonus: 1.42, skillChance: 0 };
+      const brokenPath = makePath([{x:450,y:560},{x:530,y:560}]);
+      const brokenResult = g.resolveSpiritSequence(brokenPath);
+      assert(brokenResult.attempted && !brokenResult.complete && g.player.mana >= 3 &&
+        g.spiritNodes.length === 0, '断祷残珠没有返还正确前缀的神力');
+
+      g.shopRelics = { sixPathWheel: 2 }; g.enemies = []; g.player.mana = 0;
+      g.lastRelicForm = 'line';
+      const wheelPath = makePath([
+        {x:480,y:280},{x:820,y:280},{x:820,y:540},{x:480,y:540},{x:486,y:286}
+      ]);
+      wheelPath.form = g.analyzeTrajectory(wheelPath);
+      wheelPath.gestureData = wheelPath;
+      g.dash = { pathData: wheelPath, hits: [], L: wheelPath.L, pts: wheelPath.pts, cum: wheelPath.cum };
+      g.triggerTrajectoryForm(g.dash);
+      assert(wheelPath.form.id === 'loop' && wheelPath.itemFormBlessing > 1.3 &&
+        g.player.mana >= 4, '六道轮印没有在轨迹式切换时强化本刀');
+
+      g.shopRelics = { twinScabbard: 1 }; g.state = 'play'; g.planning = false;
+      g.player.state = 'move'; g.player.mana = g.player.maxMana;
+      g.activeWeaponIndex = 0; g.swapRelicCd = 0; g.swapEmpower = false;
+      assert(g.switchWeapon(1) && g.swapEmpower && g.swapRelicCd === 10 &&
+        g.attackCost() === 0, '比翼双鞘没有令换装后的下一刀免费');
+
+      g.shopRelics = { spellReturnGem: 2 }; g.swapEmpower = false;
+      g.planEmpowered = false; g.activeEmpowerT = 0; g.activeRelicCharge = 0;
+      g.activeSkillId = 'dodge'; g.activeCooldown = 0; g.player.iTime = 0;
+      const plainActiveCost = g.attackCost();
+      assert(g.useActiveSkill() && g.activeRelicCharge === 2 &&
+        g.attackCost() < plainActiveCost, '术返勾玉没有让主动术后的下一刀减耗');
+
+      g.shopRelics = { eightEchoBell: 2, stillHourglass: 2 };
+      g.enemies = []; g.activeCooldown = 10;
+      const echoHits = [];
+      for (let i = 0; i < 12; i++) {
+        const e = g.spawnEnemy('chaser', 420 + i * 48, 430);
+        e.spawnT = 0; e.hp = e.maxHp = 9999;
+        echoHits.push({ t: e, s: 40 + i * 42, repeat: 0, ang: 0 });
+      }
+      g.dash = {
+        pts:[{x:360,y:430},{x:990,y:430}], cum:[0,630], L:630,
+        weapon:'ritualBlade', weaponDmgMul:1, hits:echoHits
+      };
+      g.purify();
+      assert(g.activeCooldown <= 7.01 && g.enemies.every(e => e.freezeT >= 0.75),
+        '八响神铃或止界砂漏没有在高连祓时触发');
+
+      g.shopRelics = { eliteBounty: 2, hundredLedger: 1 };
+      g.ledgerKills = 39; g.player.mana = 0;
+      const bountyJadeBefore = g.jade, bountyPickupsBefore = g.pickups.length;
+      const bountyElite = g.spawnEnemy('elite', 720, 360); bountyElite.spawnT = 0;
+      g.onKill(bountyElite);
+      assert(g.jade > bountyJadeBefore && g.player.mana >= 6 && g.ledgerKills === 0 &&
+        g.pickups.length > bountyPickupsBefore, '荒魂赏札或百鬼奉行录没有结算狩猎奖励');
+
+      g.shopRelics = { scarletUmbrella: 2 }; g.enemies = []; g.bullets = [];
+      g.paperShield = 0; g.mirrorShield = 0; g.renewalShield = 0; g.comboShield = 0;
+      g.umbrellaCd = 0; g.overT = -1; g.winT = -1;
+      g.player.state = 'move'; g.player.iTime = 0; g.player.hp = g.player.maxHp;
+      const umbrellaEnemy = g.spawnEnemy('chaser', g.player.x + 90, g.player.y);
+      umbrellaEnemy.spawnT = 0; umbrellaEnemy.kx = umbrellaEnemy.ky = 0;
+      const umbrellaBullet = new G.Bullet(g.player.x + 70, g.player.y, 0, 0, 1);
+      g.bullets.push(umbrellaBullet);
+      g.hurtPlayer(5, g.player.x - 40, g.player.y);
+      assert(umbrellaBullet.dead && g.umbrellaCd === 6 &&
+        Math.abs(umbrellaEnemy.kx) + Math.abs(umbrellaEnemy.ky) > 0,
+        '退魔朱伞没有在受伤时断弹并击退近敌');
+
+      g.shopRelics = { returnSoulRope: 1 }; g.bullets = [];
+      g.paperShield = 0; g.mirrorShield = 0; g.renewalShield = 0; g.comboShield = 0;
+      g.lastLifeUsed = false; g.player.state = 'move'; g.player.iTime = 0; g.player.hp = 10;
+      const ropeBullet = new G.Bullet(g.player.x + 20, g.player.y, 0, 0, 1);
+      g.bullets.push(ropeBullet);
+      g.hurtPlayer(999, g.player.x - 40, g.player.y);
+      assert(g.player.hp === 1 && g.lastLifeUsed && ropeBullet.dead,
+        '返魂结绳没有在本关第一次致命伤时保留一命');
+      log.push('[10i] 新珍品通过 连祷3/术式1/换装1/主动2/狩猎2/护命2/连斩1 总数=' +
+        G.SHOP_RELICS.length);
+
+      // 四档连斩热度、超祓溢出扩散与神祓全轨迹斩光。
+      g.enemies = []; g.delayed = []; g.skills = {};
+      g.shopRelics = { superPurgeSeal: 1 };
+      g.spawnT = 999; g.waveTime = 0;
+      assert([5, 6, 10, 15, 20].map(n => g.purgeHeat(n).tier).join(',') === '0,1,2,3,4',
+        '小祓/中祓/大祓/神祓的热度阈值不正确');
+      const divineHits = [];
+      for (let i = 0; i < 20; i++) {
+        const e = g.spawnEnemy('chaser', 390 + (i % 10) * 30, 370 + Math.floor(i / 10) * 52);
+        e.spawnT = 0; e.hp = 1;
+        divineHits.push({ t: e, repeat: 0, ang: 0 });
+      }
+      const divineOutside = g.spawnEnemy('elite', 1420, 400);
+      divineOutside.spawnT = 0; divineOutside.hp = divineOutside.maxHp = 9999;
+      const divineOutsideHp = divineOutside.hp;
+      g.dash = {
+        pts: [{x:320,y:400},{x:1540,y:400}], cum:[0,1220], L:1220,
+        weapon:'ritualBlade', weaponDmgMul:1, hits:divineHits
+      };
+      g.player.state = 'fin'; g.finT = 0; g.pendingPurify = -1;
+      g.purify();
+      assert(g.lastHeatTier === 4, '20 连斩没有进入神祓热度');
+      step(40);
+      assert(g.lastSuperPurge > 0, '伤害溢出没有触发超祓扩散');
+      assert(divineOutside.hp < divineOutsideHp, '神祓没有沿完整轨迹追加斩光');
+      log.push('[10f] 爽感机制通过 小队/超祓=' + g.lastSuperPurge + '/神祓全轨迹');
+
+      g.skills = batchSkills; g.weapons = batchWeapons; g.activeWeaponIndex = batchWeaponIndex;
+      g.shopRelics = oldRelics; g.renewalShield = 0; g._itemHud = null; g._weaponHud = '';
+      g.enemies = []; g.delayed = []; g.zones = []; g.dash = null; g.player.state = 'move'; g.rebuildStats();
+
+      // 回调后的高峰怪量下同时跑逻辑与 Canvas 绘制，防止新连锁机制引入明显性能回退。
+      g.state = 'play'; g.waveTime = 0; g.spawnT = 999; g.player.iTime = 999;
+      const pressureTypes = ['chaser','dasher','ranged','moth','splitter','siphon','guardian','binder','chanter',
+        'wardenElite','reaperElite','summonerElite','sealerElite'];
+      for (let i = 0; i < 144; i++) {
+        const e = g.spawnEnemy(pressureTypes[i % pressureTypes.length],
+          80 + (i % 18) * 120, 100 + Math.floor(i / 18) * 145);
+        e.spawnT = 0; e.hp = e.maxHp = Math.max(e.maxHp, 999);
+      }
+      const testCtx = document.getElementById('cv').getContext('2d');
+      for (let i = 0; i < 120; i++) {
+        g.update(1 / 60); g.draw(testCtx); G.Input.endFrame();
+      }
+      assert(g.enemies.filter(e => !e.dead).length >= 132 && g.state === 'play',
+        '144怪×120帧逻辑与绘制压力回归失败');
+      log.push('[10d] 144怪×120帧逻辑与 Canvas 绘制压力通过');
+      g.enemies = []; g.bullets = []; g.zones = []; g.foxfires = []; g.delayed = [];
+      g.player.iTime = 1; g.spawnT = 0;
+
+      // 普通关结束 → 商店 → 下一关
+      g.gems = []; g.pickups = []; g.pendingLevels = 0;
+      g.waveTime = g.waveDuration;
+      step(2); step(100);
+      assert(g.state === 'shop' && g.shopStock.length === 4, '关后商店没有打开');
+      log.push('[11] 关后 state=' + g.state + ' shopOffers=' + g.shopStock.length);
+      g.jade = 500; g.renderShop();
+      g.player.hp = Math.max(1, g.player.maxHp - 50);
+      g.claimShopFree(0);
+      assert(g.shopFreeClaimed && g.shopFreeChoice === 'freeHeal' && g.player.hp > g.player.maxHp - 50, '免费四选一失败');
+      const baseItem = G.SHOP_BASE_ITEMS.find(x => (g.owned[x.effect.id] || 0) < G.UPG_MAP[x.effect.id].max);
+      const baseIndex = G.SHOP_BASE_ITEMS.indexOf(baseItem);
+      const baseLevel = g.owned[baseItem.effect.id] || 0;
+      const basePrice = G.shopBasePrice(g, baseItem);
+      g.buyShopBase(baseIndex);
+      assert((g.owned[baseItem.effect.id] || 0) === baseLevel + 1 && G.shopBasePrice(g, baseItem) > basePrice, '固定商品购买或涨价失败');
+      const jadeBeforeBuy = g.jade;
+      const relicOfferIndex = Math.max(0, g.shopStock.findIndex(x => !x.item.activeSkill));
+      const boughtId = g.shopStock[relicOfferIndex].item.id;
+      const boughtBefore = g.shopRelics[boughtId] || 0;
+      g.buyShopItem(relicOfferIndex);
+      assert(g.jade < jadeBeforeBuy && g.shopStock[relicOfferIndex].sold, '商品购买失败');
+      const jadeBeforeSell = g.jade;
+      assert(g.sellShopItem(boughtId) && g.jade > jadeBeforeSell && (g.shopRelics[boughtId] || 0) === boughtBefore,
+        '珍品返奉出售失败');
+      const activeContract = G.SHOP_RELIC_MAP.active_shockwave;
+      const activeRelicBefore = g.shopRelics[activeContract.id] || 0;
+      g.shopStock[0] = { item: activeContract, price: G.shopRelicPrice(g, activeContract), sold: false };
+      g.buyShopItem(0);
+      assert(g.activeSkillId === 'shockwave' && g.shopStock[0].sold &&
+        (g.shopRelics[activeContract.id] || 0) === activeRelicBefore,
+        '主动术契没有替换右键主动槽，或错误进入了珍品行囊');
+      g.rerollShop();
+      assert(g.shopStock.length === 4 && g.shopStock.some(x => x.item.flow), '流派珍品保底或刷新失败');
+      log.push('[12] 三段商店通过 jade=' + g.jade + ' rerolls=' + g.shopRerolls + ' flow=' + g.shopStock.filter(x => x.item.flow).length);
+      g.player.mana = 17;
+      g.nextWavePaper = 1;
+      g.leaveShop();
+      assert(g.wave === 2 && g.state === 'play' && g.player.mana === 17 && g.paperShield === 1, '商店离开、跨关资源或替身纸人失败');
+      g.player.iTime = 0;
+      const shieldHp = g.player.hp;
+      g.hurtPlayer(20, g.player.x + 10, g.player.y);
+      assert(g.player.hp === shieldHp && g.paperShield === 0, '替身纸人没有抵挡伤害');
+      log.push('[13] 下一关 wave=' + g.wave + ' duration=' + g.waveDuration + ' state=' + g.state);
+
+      // 第五关 Boss：必掉技能，并在结算后进入商店
+      g.beginWave(5, false); step(2);
+      assert(!!g.boss, '第五关 Boss 没有登场');
+      log.push('[14] Boss登场=' + !!g.boss + ' hp=' + (g.boss ? g.boss.hp : 0));
+      const bossSkillBefore = skillTotal(g);
+      g.waveTime = g.waveDuration;
+      // 回归：Boss 作为小祓/中祓的一员被多目标攻击收尾时，不得在 purify 中途清空轨迹。
+      const purgeBoss = g.boss;
+      purgeBoss.hp = 1;
+      const purgeMobs = [];
+      for (let i = 0; i < 5; i++) {
+        const e = g.spawnEnemy('chaser', 520 + i * 55, 320);
+        e.spawnT = 0; e.hp = 1; purgeMobs.push(e);
+      }
+      const purgeHits = [{ t: purgeBoss, repeat: 0 }]
+        .concat(purgeMobs.map((e, i) => ({ t: e, repeat: 0, ang: i * 0.1 })));
+      g.dash = {
+        pts: [{ x: 420, y: 320 }, { x: 840, y: 320 }],
+        cum: [0, 420], L: 420, hits: purgeHits, weapon: 'ritualBlade',
+        weaponDmgMul: 1, pathData: { pts: [{ x: 420, y: 320 }, { x: 840, y: 320 }], cum: [0, 420], L: 420 }
+      };
+      g.player.state = 'fin'; g.pendingPurify = -1; g.finT = 1;
+      g.purify();
+      assert(g.bossDefeated && g.waveFinishPending && !!g.dash,
+        'Boss 多目标祓除仍在结算途中提前清空轨迹');
+      g.player.state = 'move'; g.dash = null;
+      step(12); // 先让本次群体祓除的顿帧自然结束，再检查切关。
+      assert(g.state === 'waveclear', 'Boss 多目标祓除完成后没有安全进入关卡结算');
+      step(100);
+      guard = 0;
+      while (g.state === 'levelup' && g.pendingLevels > 0 && guard++ < 30) g.chooseCard(0);
+      assert(g.state === 'itemreward' && g.itemOffers.length > 0, 'Boss珍品三选一没有打开');
+      const bossItemBefore = Object.values(g.shopRelics).reduce((a, b) => a + b, 0);
+      g.chooseItemReward(g.itemOffers[0].id);
+      assert(g.state === 'weapon' && g.weaponOffers.length > 0 &&
+        Object.values(g.shopRelics).reduce((a, b) => a + b, 0) === bossItemBefore + 1,
+        'Boss珍品奉纳或神兵流程失败');
+      g.chooseWeapon(g.weaponOffers[0]);
+      assert(g.state === 'shop' && g.weapons.length === 2 && skillTotal(g) > bossSkillBefore, 'Boss技能、武器或关后流程失败');
+      log.push('[15] Boss结算 state=' + g.state + ' skillTotal=' + skillTotal(g) + ' weapons=' + g.weapons.join(',') + ' jade=' + g.jade);
+
+      // 第二十关 Boss 即使未击杀，90 秒到时也应直接结算最终胜利
+      g.beginWave(20, false); step(2);
+      const timeoutBossHp = g.boss.hp;
+      g.waveTime = g.waveDuration;
+      step(100);
+      assert(g.state === 'win' && !g.bossDefeated && timeoutBossHp > 0,
+        '第二十关 Boss 未击杀时没有在90秒后直接胜利');
+      log.push('[16] Boss超时胜利 state=' + g.state + ' win可见=' + !document.getElementById('victory').classList.contains('hidden'));
+
+      // 重开 → 送死 → 失败界面
+      g.start();
+      g.player.maxHp = g.player.hp = 10;
+      g.player.iTime = 0;
+      g.hurtPlayer(50, g.player.x + 10, g.player.y);
+      step(120);
+      assert(g.state === 'over', '失败流程没有打开');
+      log.push('[17] 失败 state=' + g.state + ' over可见=' + !document.getElementById('gameover').classList.contains('hidden'));
+      log.push('DONE');
+    } catch (e) {
+      log.push('EXCEPTION: ' + e.message);
+      log.push((e.stack || '').split('\n').slice(0, 5).join('\n'));
+    }
+    const pre = document.createElement('pre');
+    pre.style.cssText = 'position:fixed;left:10px;top:10px;z-index:99999;background:#fff;color:#111;font:15px/1.7 monospace;padding:14px;white-space:pre-wrap;max-width:900px;';
+    pre.textContent = log.join('\n');
+    document.body.appendChild(pre);
+    document.title = 'TESTDONE';
+  }, 500);
+});
+</script>
+</body>
+</html>
